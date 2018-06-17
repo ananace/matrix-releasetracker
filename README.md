@@ -27,6 +27,7 @@ Example config:
 ---
 :backends:
 - :access_token: 0000000000000000000000000000000000000000
+  :type: github
   :users:
   - :name: ananace
     :room: '!exampleroomid:kittenface.studio'
