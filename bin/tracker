@@ -1,0 +1,46 @@
+#!/usr/bin/env ruby
+
+require 'matrix_releasetracker'
+require 'net/http'
+
+def fix_media_url(url, config)
+  config.media[url] ||= begin
+    data = Net::HTTP.get_response(URI(url))
+
+    config.client.media_upload(data.body, data.content_type)[:content_uri] if data.is_a? Net::HTTPOK
+  end
+end
+
+if $PROGRAM_NAME == __FILE__
+  config = MatrixReleasetracker::Config.load!
+
+  # MatrixSdk.debug!
+
+  puts "[#{Time.now.strftime '%F %T'}] Loaded configuration, starting tracker with #{config.backends.count} backends."
+  loop begin
+    config.backends.each do |_k, b|
+      puts "[#{Time.now.strftime '%F %T'}] Polling #{b.name} with #{b.users.count} users..."
+      b.users.each do |u|
+        releases = b.last_releases(u[:name])
+        puts "[#{Time.now.strftime '%F %T'}]  Found #{releases[:releases].count} projects for #{u[:name]}."
+
+        releases[:releases].reject { |_k, v| v.nil? || v.publish_date < (releases[:last_check] || Time.new(0)) }.each do |_name, rel|
+          puts "[#{Time.now.strftime '%F %T'}]   Posting notice about #{rel.full_name} #{rel.version}"
+          rel.avatar_url = fix_media_url(rel.avatar_url, config) if rel.avatar_url
+          config.client.send_message_event(u[:room], 'm.room.message',
+          {
+            msgtype: 'm.notice',
+            body: rel.to_s(:markdown),
+            formatted_body: rel.to_s(:html),
+            format: 'org.matrix.custom.html'
+          })
+        end
+      end
+    end
+
+    puts "[#{Time.now.strftime '%F %T'}] Finished polling, sleeping 1 hour(s)."
+
+    config.save!
+    sleep 1 * 60 * 60 # Update every other hour
+  end
+end
