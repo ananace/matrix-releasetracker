@@ -5,7 +5,7 @@ require 'set'
 module MatrixReleasetracker::Backends
   class Github < MatrixReleasetracker::Backend
     STAR_EXPIRY = 1 * 24 * 60 * 60
-    RELEASE_EXPIRY = 120 * 60 * 60
+    RELEASE_EXPIRY = 1 * 60 * 60
     NIL_RELEASE_EXPIRY = 1 * 24 * 60 * 60
     REPODATA_EXPIRY = 2 * 24 * 60 * 60
 
@@ -68,8 +68,13 @@ module MatrixReleasetracker::Backends
       return trepo[:latest] if trepo.key?(:latest) && (trepo[:last_check] || Time.new(0)) + (trepo[:latest].nil? ? NIL_RELEASE_EXPIRY : RELEASE_EXPIRY) > Time.now
 
       release = client.latest_release(repo, data) rescue nil
-      relbody = release.body
       trepo[:last_check] = Time.now
+      if release.nil?
+        trepo[:latest] = nil
+        return
+      end
+
+      relbody = release.body
       trepo[:latest] = [release].compact.map do |rel|
         {
           name: rel.name,

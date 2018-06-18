@@ -17,7 +17,7 @@ if $PROGRAM_NAME == __FILE__
   # MatrixSdk.debug!
 
   puts "[#{Time.now.strftime '%F %T'}] Loaded configuration, starting tracker with #{config.backends.count} backends."
-  loop begin
+  loop do
     config.backends.each do |_k, b|
       puts "[#{Time.now.strftime '%F %T'}] Polling #{b.name} with #{b.users.count} users..."
       b.users.each do |u|
