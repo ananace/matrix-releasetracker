@@ -9,6 +9,10 @@ module MatrixReleasetracker::Backends
     NIL_RELEASE_EXPIRY = 1 * 24 * 60 * 60
     REPODATA_EXPIRY = 2 * 24 * 60 * 60
 
+    def logger
+      Logging.logger[self.class.name]
+    end
+
     def name
       'GitHub'
     end
@@ -32,6 +36,7 @@ module MatrixReleasetracker::Backends
 
       return tuser[:repos] if (tuser[:last_check] || Time.new(0)) + STAR_EXPIRY > Time.now
 
+      logger.debug "Refreshing stars for user #{user}"
       tracked = paginate { client.starred(user, data) }
       tuser[:repos] = tracked.map(&:full_name)
       tuser[:last_check] = Time.now
@@ -44,6 +49,7 @@ module MatrixReleasetracker::Backends
         trepo = tracked_repo(repo)
         repo = client.repository(repo, data)
       end
+      logger.debug "Refreshing stored data for repository #{repo.full_name}"
 
       trepo ||= tracked_repo(repo.full_name)
 
@@ -70,9 +76,12 @@ module MatrixReleasetracker::Backends
       release = client.latest_release(repo, data) rescue nil
       trepo[:last_check] = Time.now
       if release.nil?
+        logger.debug "No latest release for repository #{repo}"
         trepo[:latest] = nil
         return
       end
+
+      logger.debug "Refreshing latest release for repository #{repo}"
 
       relbody = release.body
       trepo[:latest] = [release].compact.map do |rel|
