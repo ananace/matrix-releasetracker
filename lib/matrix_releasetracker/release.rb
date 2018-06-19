@@ -17,6 +17,16 @@ module MatrixReleasetracker
                     return Kramdown::Document.new(to_s(:markdown)).to_html_extended + '<br/>'
                   end
 
+      unless release_notes.nil? || release_notes.empty?
+        if format == :plain
+          release_notes_ = release_notes.split("\n")[0, 2].map(&:rstrip).join "\n"
+          release_notes_ = _release_notes[0, 128] if _release_notes.length > 128
+        else
+          release_notes_ = release_notes.split("\n")[0, 10].map(&:rstrip).join "\n"
+          release_notes_ = _release_notes[0, 512] if _release_notes.length > 512
+        end
+      end
+
       format(formatstr,
              namespace: namespace,
              name: name,
@@ -24,8 +34,8 @@ module MatrixReleasetracker
              version: version,
              version_name: (version_name.nil? || version_name.empty? ? version : version_name),
              publish_date: (publish_date ? publish_date.strftime('%a, %b %e %Y') : nil),
-             release_notes: (release_notes || '').length > 512 ? release_notes[0, 512] : release_notes,
-             release_note_overflow: ("   \n ..." if (release_notes || '').length > 512),
+             release_notes: release_notes_,
+             release_note_overflow: ("   \n ..." if release_notes.count("\n") > 10),
              repo_url: repo_url,
              release_url: release_url,
              avatar_url: avatar_url)
