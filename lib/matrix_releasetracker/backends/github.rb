@@ -20,11 +20,7 @@ module MatrixReleasetracker::Backends
     def rate_limit
       limit = client.rate_limit
 
-      Struct.new(:backend, :requests, :remaining, :resets_at, :resets_in) do
-        def near_limit
-          remaining <= requests * 0.05
-        end
-      end.new(self, limit.limit, limit.remaining, limit.resets_at, limit.resets_in)
+      RateLimit.new(self, limit.limit, limit.remaining, limit.resets_at, limit.resets_in)
     end
 
     def all_stars(data = {})
