@@ -51,9 +51,21 @@ if $PROGRAM_NAME == __FILE__
       end
     end
 
-    STDERR.puts "[#{Time.now.strftime '%F %T'}] Finished polling, sleeping 15 minutes."
-
     config.save!
-    sleep 15 * 60
+    STDERR.puts "[#{Time.now.strftime '%F %T'}] Finished polling, data saved."
+
+    limits = config.backends.values.map(&:rate_limit)
+    limits.each do |l|
+      STDERR.puts "[#{Time.now.strftime '%F %T'}] Limit|#{l.backend.name} #{l.requests - l.remaining} / #{l.requests} used (resets in #{l.resets_in} seconds)"
+    end
+    limits = limits.select(&:near_limit)
+    if limits.any?
+      latest = limits.max(&:resets_in)
+
+      STDERR.puts "[#{Time.now.strftime '%F %T'}] Backend limits almost reached for #{latest.backend.name}, sleeping for #{latest.resets_in / 60.0} minutes"
+      sleep latest.resets_in
+    else
+      sleep 15 * 60
+    end
   end
 end
