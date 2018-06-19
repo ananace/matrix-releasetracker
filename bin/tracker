@@ -16,16 +16,16 @@ if $PROGRAM_NAME == __FILE__
 
   # MatrixSdk.debug!
 
-  puts "[#{Time.now.strftime '%F %T'}] Loaded configuration, starting tracker with #{config.backends.count} backends."
+  STDERR.puts "[#{Time.now.strftime '%F %T'}] Loaded configuration, starting tracker with #{config.backends.count} backends."
   loop do
     config.backends.each do |_k, b|
-      puts "[#{Time.now.strftime '%F %T'}] Polling #{b.name} with #{b.users.count} users..."
+      STDERR.puts "[#{Time.now.strftime '%F %T'}] Polling #{b.name} with #{b.users.count} users..."
       b.users.each do |u|
         releases = b.last_releases(u[:name])
-        puts "[#{Time.now.strftime '%F %T'}]  Found #{releases[:releases].count} projects for #{u[:name]}."
+        STDERR.puts "[#{Time.now.strftime '%F %T'}]  Found #{releases[:releases].count} projects for #{u[:name]}."
 
         releases[:releases].reject { |_k, v| v.nil? || v.publish_date < (releases[:last_check] || Time.new(0)) }.each do |_name, rel|
-          puts "[#{Time.now.strftime '%F %T'}]   Posting notice about #{rel.full_name} #{rel.version}"
+          STDERR.puts "[#{Time.now.strftime '%F %T'}]   Posting notice about #{rel.full_name} #{rel.version}"
           rel.avatar_url = fix_media_url(rel.avatar_url, config) if rel.avatar_url
           config.client.send_message_event(u[:room], 'm.room.message',
           {
@@ -38,7 +38,7 @@ if $PROGRAM_NAME == __FILE__
       end
     end
 
-    puts "[#{Time.now.strftime '%F %T'}] Finished polling, sleeping 1 hour(s)."
+    STDERR.puts "[#{Time.now.strftime '%F %T'}] Finished polling, sleeping 1 hour(s)."
 
     config.save!
     sleep 1 * 60 * 60 # Update every other hour
