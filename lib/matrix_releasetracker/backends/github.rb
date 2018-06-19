@@ -86,9 +86,14 @@ module MatrixReleasetracker::Backends
 
       if allow == :tags
         logger.debug "Reading tags for repository #{repo}"
-        ref = per_page(1) { client.refs(repo, 'tags', data) }.last
-        tag = ref.object.rels[:self].get.data if ref
-        # commit = tag.object.rels[:self].get.data
+        refs = client.refs(repo, 'tags', data)
+
+        # GitHub sorts refs lexicographically, not by date
+        ref_name = Net::HTTP.get(URI("https://github.com/#{repo}/tags"))[/tag-name">(.*)<\/span>/, 1]
+        ref = refs.find { |r| r.ref.end_with? ref_name } || refs.last
+
+        tag = ref.object.rels[:self].get.data if ref && ref.object.type == 'tag'
+        commit = ref.object.rels[:self].get.data if ref && ref.object.type == 'commit'
 
         if tag
           release = Struct.new(:tag_name, :published_at, :html_url, :body) do
@@ -96,6 +101,13 @@ module MatrixReleasetracker::Backends
               tag_name
             end
           end.new(tag.tag, tag.tagger.date, "https://github.com/#{repo}/releases/tag/#{tag.tag}", tag.message.strip)
+        elsif commit
+          tag_name = ref.ref.sub('refs/tags/', '')
+          release = Struct.new(:tag_name, :published_at, :html_url, :body) do
+            def name
+              tag_name
+            end
+          end.new(tag_name, commit.committer.date, "https://github.com/#{repo}/releases/tag/#{tag_name}", nil)
         end
       elsif allow == :prereleases
         logger.debug "Reading pre-releases for repository #{repo}"
@@ -109,9 +121,9 @@ module MatrixReleasetracker::Backends
         trepo[:latest] = nil
         if trepo[:allow].nil?
           logger.debug "No latest release for repository #{repo}, checking for tags..."
-          refs = per_page(1) { client.refs(repo, 'tags', data) }
+          refs = per_page(1) { client.refs(repo, 'tags', data) } rescue nil
 
-          if refs.any?
+          unless refs.nil? || refs.empty?
             trepo[:allow] = :tags
             trepo[:next_check] = Time.now
           end
