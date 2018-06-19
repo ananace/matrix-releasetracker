@@ -72,15 +72,45 @@ module MatrixReleasetracker::Backends
       return trepo[:latest] if (trepo[:next_check] || Time.new(0)) > Time.now
       logger.debug "Timeout (#{trepo[:next_check]}) reached on `latest_release`, refreshing data for repository #{repo}"
 
-      release = client.latest_release(repo, data) rescue nil
+      allow = trepo.fetch(:allow, :releases)
+
+      if allow == :tags
+        logger.debug "Reading tags for repository #{repo}"
+        ref = per_page(1) { client.refs(repo, 'tags', data) }.last
+        tag = ref.object.rels[:self].get.data if ref
+        # commit = tag.object.rels[:self].get.data
+
+        if tag
+          release = Struct.new(:tag_name, :published_at, :html_url, :body) do
+            def name
+              tag_name
+            end
+          end.new(tag.tag, tag.tagger.date, "https://github.com/#{repo}/releases/tag/#{tag.tag}", tag.message.strip)
+        end
+      elsif allow == :prereleases
+        logger.debug "Reading pre-releases for repository #{repo}"
+        release = per_page(5) { client.releases(repo, data) }.first
+      else
+        release = client.latest_release(repo, data) rescue nil
+      end
+
       trepo[:next_check] = Time.now + with_stagger(trepo[:latest] ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY)
       if release.nil?
-        logger.debug "No latest release for repository #{repo}"
         trepo[:latest] = nil
+        if trepo[:allow].nil?
+          logger.debug "No latest release for repository #{repo}, checking for tags..."
+          refs = per_page(1) { client.refs(repo, 'tags', data) }
+
+          if refs.any?
+            trepo[:allow] = :tags
+            trepo[:next_check] = Time.now
+          end
+        end
         return
       end
 
       relbody = release.body
+
       trepo[:latest] = [release].compact.map do |rel|
         {
           name: rel.name,
