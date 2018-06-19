@@ -36,7 +36,7 @@ module MatrixReleasetracker::Backends
 
       tracked = paginate { client.starred(user, data) }
       tuser[:repos] = tracked.map(&:full_name)
-      tuser[:next_check] = Time.now + (STAR_EXPIRY / 2) + Random.rand(STAR_EXPIRY)
+      tuser[:next_check] = Time.now + with_stagger(STAR_EXPIRY)
 
       tuser[:repos]
     end
@@ -55,7 +55,7 @@ module MatrixReleasetracker::Backends
         full_name: repo.full_name,
         name: repo.name,
         html_url: repo.html_url,
-        next_data_sync: Time.now + (REPODATA_EXPIRY / 2) + Random.rand(REPODATA_EXPIRY)
+        next_data_sync: Time.now + with_stagger(REPODATA_EXPIRY)
       )
       trepo[:avatar_url] = repo.owner.avatar_url if repo.owner.type == 'Organization'
 
@@ -73,7 +73,7 @@ module MatrixReleasetracker::Backends
       logger.debug "Timeout (#{trepo[:next_check]}) reached on `latest_release`, refreshing data for repository #{repo}"
 
       release = client.latest_release(repo, data) rescue nil
-      trepo[:next_check] = Time.now + (trepo[:latest] ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY) / 2 + Random.rand(trepo[:latest] ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY)
+      trepo[:next_check] = Time.now + with_stagger(trepo[:latest] ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY)
       if release.nil?
         logger.debug "No latest release for repository #{repo}"
         trepo[:latest] = nil
@@ -124,6 +124,10 @@ module MatrixReleasetracker::Backends
     end
 
     private
+
+    def with_stagger(value)
+      value + (Random.rand - 0.5) * (value / 2.0)
+    end
 
     def tracked_repos
       (config[:tracked] ||= {})[:repos] ||= {}

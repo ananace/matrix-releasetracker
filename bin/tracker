@@ -51,9 +51,9 @@ if $PROGRAM_NAME == __FILE__
       end
     end
 
-    STDERR.puts "[#{Time.now.strftime '%F %T'}] Finished polling, sleeping 30 minutes."
+    STDERR.puts "[#{Time.now.strftime '%F %T'}] Finished polling, sleeping 15 minutes."
 
     config.save!
-    sleep 30 * 60
+    sleep 15 * 60
   end
 end
