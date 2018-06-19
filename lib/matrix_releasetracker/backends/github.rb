@@ -52,12 +52,12 @@ module MatrixReleasetracker::Backends
       trepo ||= tracked_repo(repo.full_name)
 
       trepo.merge!(
+        avatar_url: repo.owner.avatar_url,
         full_name: repo.full_name,
         name: repo.name,
         html_url: repo.html_url,
         next_data_sync: Time.now + with_stagger(REPODATA_EXPIRY)
       )
-      trepo[:avatar_url] = repo.owner.avatar_url if repo.owner.type == 'Organization'
 
       true
     end
