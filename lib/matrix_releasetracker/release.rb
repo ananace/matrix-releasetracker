@@ -35,7 +35,7 @@ module MatrixReleasetracker
              version_name: (version_name.nil? || version_name.empty? ? version : version_name),
              publish_date: (publish_date ? publish_date.strftime('%a, %b %e %Y') : nil),
              release_notes: release_notes_,
-             release_note_overflow: ("   \n ..." if release_notes.count("\n") > 10),
+             release_note_overflow: ("   \n ..." if (release_notes || '').count("\n") > 10),
              repo_url: repo_url,
              release_url: release_url,
              avatar_url: avatar_url)
