@@ -1,5 +1,6 @@
 #!/usr/bin/env ruby
 
+require 'logging'
 require 'matrix_releasetracker'
 require 'net/http'
 
@@ -16,7 +17,10 @@ if $PROGRAM_NAME == __FILE__
   STDERR.puts "[#{Time.now.strftime '%F %T'}] Loaded configuration."
 
   # MatrixSdk.debug!
-
+  Logging.logger['MatrixReleasetracker'].tap do |logger|
+    logger.add_appenders Logging.appenders.stdout
+    logger.level = :debug # :warn
+  end
 
   STDERR.puts "[#{Time.now.strftime '%F %T'}] Ensuring configured rooms are joined."
   config.backends.map { |_k, b| b.users.map { |u| u[:room] } }.flatten.uniq.each do |room|
@@ -28,8 +32,9 @@ if $PROGRAM_NAME == __FILE__
     config.backends.each do |_k, b|
       STDERR.puts "[#{Time.now.strftime '%F %T'}] Polling backend #{b.name} with #{b.users.count} users..."
       b.users.each do |u|
+        repos = b.stars(u[:name])
         releases = b.last_releases(u[:name])
-        STDERR.puts "[#{Time.now.strftime '%F %T'}]  Found #{releases[:releases].count} tracked projects for #{u[:name]}."
+        STDERR.puts "[#{Time.now.strftime '%F %T'}]  Tracking #{repos.count} repositories - #{releases[:releases].count} with releases, for #{u[:name]}."
 
         releases[:releases].reject { |_k, v| v.nil? || v.publish_date < (releases[:last_check] || Time.new(0)) }.each do |_name, rel|
           STDERR.puts "[#{Time.now.strftime '%F %T'}]    Posting notice about #{rel.full_name} #{rel.version}"
@@ -46,9 +51,9 @@ if $PROGRAM_NAME == __FILE__
       end
     end
 
-    STDERR.puts "[#{Time.now.strftime '%F %T'}] Finished polling, sleeping 1 hour(s)."
+    STDERR.puts "[#{Time.now.strftime '%F %T'}] Finished polling, sleeping 30 minutes."
 
     config.save!
-    sleep 1 * 60 * 60 # Update every other hour
+    sleep 30 * 60
   end
 end

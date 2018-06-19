@@ -19,12 +19,9 @@ module MatrixReleasetracker::Backends
 
     def all_stars(data = {})
       users.each do |u|
-        next if (tracked_user(u.name)[:last_check] || Time.new(0)) + STAR_EXPIRY > Time.now
-
         stars(u, data).each do |repo|
-          refresh_repo(repo)
+          # refresh_repo(repo)
         end
-        tracked_user(u[:name])[:last_check] = Time.now
       end
 
       tracked_repos.values
@@ -34,12 +31,12 @@ module MatrixReleasetracker::Backends
       user = user.name unless user.is_a? String
       tuser = tracked_user(user)
 
-      return tuser[:repos] if (tuser[:last_check] || Time.new(0)) + STAR_EXPIRY > Time.now
+      return tuser[:repos] if (tuser[:next_check] || Time.new(0)) > Time.now
+      logger.debug "Timeout (#{tuser[:next_check]}) reached on `stars`, refreshing data for user #{user}."
 
-      logger.debug "Refreshing stars for user #{user}"
       tracked = paginate { client.starred(user, data) }
       tuser[:repos] = tracked.map(&:full_name)
-      tuser[:last_check] = Time.now
+      tuser[:next_check] = Time.now + (STAR_EXPIRY / 2) + Random.rand(STAR_EXPIRY)
 
       tuser[:repos]
     end
@@ -49,7 +46,8 @@ module MatrixReleasetracker::Backends
         trepo = tracked_repo(repo)
         repo = client.repository(repo, data)
       end
-      logger.debug "Refreshing stored data for repository #{repo.full_name}"
+
+      logger.debug "Forced refresh of stored data for repository #{repo.full_name}"
 
       trepo ||= tracked_repo(repo.full_name)
 
@@ -57,7 +55,7 @@ module MatrixReleasetracker::Backends
         full_name: repo.full_name,
         name: repo.name,
         html_url: repo.html_url,
-        last_data_sync: Time.now
+        next_data_sync: Time.now + (REPODATA_EXPIRY / 2) + Random.rand(REPODATA_EXPIRY)
       )
       trepo[:avatar_url] = repo.owner.avatar_url if repo.owner.type == 'Organization'
 
@@ -68,20 +66,19 @@ module MatrixReleasetracker::Backends
       repo = repo.full_name unless repo.is_a? String
       trepo = tracked_repo(repo)
 
-      refresh_repo(repo, data) if (trepo[:last_data_sync] || Time.new(0)) + REPODATA_EXPIRY < Time.now
+      refresh_repo(repo, data) if (trepo[:next_data_sync] || Time.new(0)) < Time.now
       refresh_repo(repo, data) unless (trepo.keys & %i[full_name name html_url]).count == 3
 
-      return trepo[:latest] if trepo.key?(:latest) && (trepo[:last_check] || Time.new(0)) + (trepo[:latest].nil? ? NIL_RELEASE_EXPIRY : RELEASE_EXPIRY) > Time.now
+      return trepo[:latest] if (trepo[:next_check] || Time.new(0)) > Time.now
+      logger.debug "Timeout (#{trepo[:next_check]}) reached on `latest_release`, refreshing data for repository #{repo}"
 
       release = client.latest_release(repo, data) rescue nil
-      trepo[:last_check] = Time.now
+      trepo[:next_check] = Time.now + (trepo[:latest] ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY) / 2 + Random.rand(trepo[:latest] ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY)
       if release.nil?
         logger.debug "No latest release for repository #{repo}"
         trepo[:latest] = nil
         return
       end
-
-      logger.debug "Refreshing latest release for repository #{repo}"
 
       relbody = release.body
       trepo[:latest] = [release].compact.map do |rel|
