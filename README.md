@@ -40,7 +40,7 @@ Example config:
 
 Example systemd unit:
 
-```
+```ini
 # ~/.config/systemd/user/matrix-releasetracker.service
 [Unit]
 Description=Release tracker for Matrix
