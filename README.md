@@ -38,6 +38,23 @@ Example config:
   :access_token: <token>
 ```
 
+Example systemd unit:
+
+```
+# ~/.config/systemd/user/matrix-releasetracker.service
+[Unit]
+Description=Release tracker for Matrix
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ace/Projects/ruby-matrix-releasetracker
+ExecStart=/bin/bash -lc 'bundle exec bin/tracker'
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+
 ## TODO
 
 - Store data in an actual database, not the config file
