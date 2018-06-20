@@ -134,11 +134,10 @@ module MatrixReleasetracker::Backends
           name: rel.name,
           tag_name: rel.tag_name,
           published_at: rel.published_at,
-          html_url: rel.html_url
+          html_url: rel.html_url,
+          body: relbody
         }
       end.first
-
-      trepo[:latest].dup.merge(body: relbody)
     end
 
     def last_releases(user = config[:user])
