@@ -36,7 +36,8 @@ if $PROGRAM_NAME == __FILE__
         releases = b.last_releases(u[:name])
         STDERR.puts "[#{Time.now.strftime '%F %T'}]  Tracking #{repos.count} repositories - #{releases[:releases].count} with releases, for #{u[:name]}."
 
-        releases[:releases].reject { |_k, v| v.nil? || v.publish_date < (releases[:last_check] || Time.new(0)) }.each do |_name, rel|
+        selected_releases = releases[:releases].reject { |_k, v| v.nil? || v.publish_date < (u[:last_check] || Time.new(0)) }
+        selected_releases.each do |_name, rel|
           STDERR.puts "[#{Time.now.strftime '%F %T'}]    Posting notice about #{rel.full_name} #{rel.version}"
           rel.avatar_url = fix_media_url(rel.avatar_url, config) if rel.avatar_url
           config.client.send_message_event(
@@ -48,6 +49,8 @@ if $PROGRAM_NAME == __FILE__
             format: 'org.matrix.custom.html'
           )
         end
+
+        u[:last_check] = Time.now if selected_releases.any?
       end
     end
 
