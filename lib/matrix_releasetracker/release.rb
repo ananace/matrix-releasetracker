@@ -20,10 +20,10 @@ module MatrixReleasetracker
       unless release_notes.nil? || release_notes.empty?
         if format == :plain
           release_notes_ = release_notes.split("\n")[0, 2].map(&:rstrip).join "\n"
-          release_notes_ = _release_notes[0, 128] if _release_notes.length > 128
+          release_notes_ = release_notes_[0, 128] if release_notes_.length > 128
         else
           release_notes_ = release_notes.split("\n")[0, 10].map(&:rstrip).join "\n"
-          release_notes_ = _release_notes[0, 512] if _release_notes.length > 512
+          release_notes_ = release_notes_[0, 512] if release_notes_.length > 512
         end
       end
 
