@@ -61,7 +61,7 @@ if $PROGRAM_NAME == __FILE__
           users = config.client.get_room_members(room_id)[:chunk].select { |c| c[:content][:membership] == 'join' }
           next if users.count > 2
 
-          users = config.backends.find { |k, _v| k == :github }.users
+          users = config.backends.find { |k, _v| k == :github }.last.users
           next if users.any? { |u| u[:name] == message[:content][:body][8..-1] || u[:room] == room_id }
 
           users << {
