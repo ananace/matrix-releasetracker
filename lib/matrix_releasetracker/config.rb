@@ -9,7 +9,7 @@ module MatrixReleasetracker
       config
     end
 
-    attr_accessor :filename
+    attr_accessor :filename, :next_batch
     attr_reader :backends, :client, :media
 
     def load!
@@ -47,7 +47,8 @@ module MatrixReleasetracker
             device_id: client.device_id,
             validate_certificate: client.validate_certificate,
             transaction_id: client.instance_variable_get(:@transaction_id),
-            backoff_time: client.instance_variable_get(:@backoff_time)
+            backoff_time: client.instance_variable_get(:@backoff_time),
+            next_batch: next_batch
           },
           media: media
         )

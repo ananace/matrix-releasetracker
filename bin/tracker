@@ -25,10 +25,53 @@ if $PROGRAM_NAME == __FILE__
   STDERR.puts "[#{Time.now.strftime '%F %T'}] Ensuring configured rooms are joined."
   config.backends.map { |_k, b| b.users.map { |u| u[:room] } }.flatten.uniq.each do |room|
     config.client.join_room(room)
+
+    users = config.client.get_room_members(room)[:chunk].select { |c| c[:content][:membership] == 'join' }
+    next if users.count > 1
+
+    STDERR.puts "[#{Time.now.strftime '%F %T'}] Room #{u[:room]} is empty, leaving."
+    config.backends.each do |b|
+      b.users.delete_if { |u| u[:room] == room }
+    end
+
+    config.client.leave_room(room)
   end
 
   STDERR.puts "[#{Time.now.strftime '%F %T'}] Starting tracker with #{config.backends.count} backends."
   loop do
+    STDERR.puts "[#{Time.now.strftime '%F %T'}] Checking Matrix client..."
+    config.client.sync(timeout: 30.0, set_presence: :offline, since: config.next_batch).tap do |data|
+      config.next_batch = data[:next_batch]
+
+      data[:rooms][:invite].each do |room_id, _invite|
+        STDERR.puts "[#{Time.now.strftime '%F %T'}]   Invited to #{room_id}."
+
+        next if config.backends.map { |_k, b| b.users.map { |u| u[:room] } }.flatten.uniq.count > 50
+
+        STDERR.puts "[#{Time.now.strftime '%F %T'}]   Joining #{room_id}."
+        config.client.join_room(room_id.to_s)
+      end
+
+      data[:rooms][:join].each do |room_id, join|
+        join[:timeline][:events].select { |ev| ev[:type] == 'm.room.message' && ev[:content] && ev[:content][:msgtype] == 'm.text' }.each do |message|
+          STDERR.puts "[#{Time.now.strftime '%F %T'}]   #{message[:sender]} in #{room_id}: #{message[:content][:body]}"
+
+          next unless message[:content][:body].start_with? '!github '
+
+          users = config.client.get_room_members(room_id)[:chunk].select { |c| c[:content][:membership] == 'join' }
+          next if users.count > 2
+
+          users = config.backends.find { |k, _v| k == :github }.users
+          next if users.any? { |u| u[:name] == message[:content][:body][8..-1] || u[:room] == room_id }
+
+          users << {
+            name: message[:content][:body][8..-1],
+            room: room_id
+          }
+        end
+      end
+    end
+
     config.backends.each do |_k, b|
       STDERR.puts "[#{Time.now.strftime '%F %T'}] Polling backend #{b.name} with #{b.users.count} users..."
       b.users.each do |u|
