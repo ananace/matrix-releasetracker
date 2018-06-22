@@ -62,12 +62,20 @@ if $PROGRAM_NAME == __FILE__
           next if users.count > 2
 
           users = config.backends.find { |k, _v| k == :github }.last.users
-          next if users.any? { |u| u[:name] == message[:content][:body][8..-1] || u[:room] == room_id }
+          user = users.find { |u| u[:room] == room_id }
 
-          users << {
-            name: message[:content][:body][8..-1],
-            room: room_id.to_s
-          }
+          gh_name = message[:content][:body][8..-1]
+          if user
+            user[:name] = gh_name.downcase
+            user[:room] = room_id.to_s
+          else
+            users << {
+              name: gh_name.downcase,
+              room: room_id.to_s
+            }
+          end
+
+          config.client.send_notice(room_id.to_s, "Now tracking GitHub user '#{gh_name}'")
         end
       end
     end
