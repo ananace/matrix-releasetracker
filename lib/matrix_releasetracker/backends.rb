@@ -33,5 +33,6 @@ module MatrixReleasetracker
 
   module Backends
     autoload :Github, 'matrix_releasetracker/backends/github'
+    autoload :Gitlab, 'matrix_releasetracker/backends/gitlab'
   end
 end
