@@ -28,6 +28,8 @@ module MatrixReleasetracker
       end]
 
       @client = [data.fetch(:client, {})].map do |config|
+        @next_batch = config.delete :next_batch
+
         MatrixSdk::Api.new config.delete(:hs_url), config
       end.first
 
