@@ -65,9 +65,10 @@ if $PROGRAM_NAME == __FILE__
           user = users.find { |u| u[:room] == room_id }
 
           gh_name = message[:content][:body][8..-1]
+          next if user[:name] == gh_name
+
           if user
             user[:name] = gh_name.downcase
-            user[:room] = room_id.to_s
           else
             users << {
               name: gh_name.downcase,
