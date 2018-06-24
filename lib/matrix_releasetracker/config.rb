@@ -1,5 +1,4 @@
 require 'psych'
-require 'matrix_sdk'
 
 module MatrixReleasetracker
   class Config
@@ -9,7 +8,7 @@ module MatrixReleasetracker
       config
     end
 
-    attr_accessor :filename, :next_batch
+    attr_accessor :filename
     attr_reader :backends, :client, :media
 
     def load!
@@ -28,31 +27,31 @@ module MatrixReleasetracker
       end]
 
       @client = [data.fetch(:client, {})].map do |config|
-        @next_batch = config.delete :next_batch
-
-        MatrixSdk::Api.new config.delete(:hs_url), config
+        MatrixReleasetracker::Client.new config
       end.first
 
-      @media = data.fetch(:media, {})
+      @media = client.data.fetch(:media, data.fetch(:media, {}))
 
       true
     end
 
     def save!
+      client.data[:media] = @media
+      client.save! if client
+
       File.write(
         filename,
         Psych.dump(
           backends: backends.map { |k, v| v.instance_variable_get(:@config).merge(type: k) },
           client: {
-            hs_url: client.homeserver.to_s,
-            access_token: client.access_token,
-            device_id: client.device_id,
-            validate_certificate: client.validate_certificate,
-            transaction_id: client.instance_variable_get(:@transaction_id),
-            backoff_time: client.instance_variable_get(:@backoff_time),
-            next_batch: next_batch
-          },
-          media: media
+            hs_url: client.api.homeserver.to_s,
+            access_token: client.api.access_token,
+            device_id: client.api.device_id,
+            validate_certificate: client.api.validate_certificate,
+            transaction_id: client.api.instance_variable_get(:@transaction_id),
+            backoff_time: client.api.instance_variable_get(:@backoff_time),
+            next_batch: client.next_batch
+          }
         )
       )
     end

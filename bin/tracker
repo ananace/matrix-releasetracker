@@ -8,7 +8,7 @@ def fix_media_url(url, config)
   config.media[url] ||= begin
     data = Net::HTTP.get_response(URI(url))
 
-    config.client.media_upload(data.body, data.content_type)[:content_uri] if data.is_a? Net::HTTPOK
+    config.client.api.media_upload(data.body, data.content_type)[:content_uri] if data.is_a? Net::HTTPOK
   end
 end
 
@@ -22,11 +22,13 @@ if $PROGRAM_NAME == __FILE__
     logger.level = :debug # :warn
   end
 
+  api = config.client.api
+
   STDERR.puts "[#{Time.now.strftime '%F %T'}] Ensuring configured rooms are joined."
   config.backends.map { |_k, b| b.users.map { |u| u[:room] } }.flatten.uniq.each do |room|
-    config.client.join_room(room.to_s)
+    api.join_room(room.to_s)
 
-    users = config.client.get_room_members(room)[:chunk].select { |c| c[:content][:membership] == 'join' }
+    users = api.get_room_members(room)[:chunk].select { |c| c[:content][:membership] == 'join' }
     next if users.count > 1
 
     STDERR.puts "[#{Time.now.strftime '%F %T'}] Room #{u[:room]} is empty, leaving."
@@ -34,14 +36,14 @@ if $PROGRAM_NAME == __FILE__
       b.users.delete_if { |u| u[:room] == room }
     end
 
-    config.client.leave_room(room)
+    api.leave_room(room)
   end
 
   STDERR.puts "[#{Time.now.strftime '%F %T'}] Starting tracker with #{config.backends.count} backends."
   loop do
     STDERR.puts "[#{Time.now.strftime '%F %T'}] Checking Matrix client..."
-    config.client.sync(timeout: 30.0, set_presence: :offline, since: config.next_batch).tap do |data|
-      config.next_batch = data[:next_batch]
+    api.sync(timeout: 30.0, set_presence: :offline, since: config.client.next_batch).tap do |data|
+      config.client.next_batch = data[:next_batch]
 
       data[:rooms][:invite].each do |room_id, _invite|
         STDERR.puts "[#{Time.now.strftime '%F %T'}]   Invited to #{room_id}."
@@ -49,7 +51,7 @@ if $PROGRAM_NAME == __FILE__
         next if config.backends.map { |_k, b| b.users.map { |u| u[:room] } }.flatten.uniq.count > 50
 
         STDERR.puts "[#{Time.now.strftime '%F %T'}]   Joining #{room_id}."
-        config.client.join_room(room_id.to_s)
+        api.join_room(room_id.to_s)
       end
 
       data[:rooms][:join].each do |room_id, join|
@@ -58,7 +60,7 @@ if $PROGRAM_NAME == __FILE__
 
           next unless message[:content][:body].start_with? '!github '
 
-          users = config.client.get_room_members(room_id)[:chunk].select { |c| c[:content][:membership] == 'join' }
+          users = api.get_room_members(room_id)[:chunk].select { |c| c[:content][:membership] == 'join' }
           next if users.count > 2
 
           users = config.backends.find { |k, _v| k == :github }.last.users
@@ -77,7 +79,7 @@ if $PROGRAM_NAME == __FILE__
             }
           end
 
-          config.client.send_notice(room_id.to_s, "Now tracking GitHub user '#{gh_name}'")
+          api.send_notice(room_id.to_s, "Now tracking GitHub user '#{gh_name}'")
         end
       end
     end
@@ -93,7 +95,7 @@ if $PROGRAM_NAME == __FILE__
         selected_releases.each do |_name, rel|
           STDERR.puts "[#{Time.now.strftime '%F %T'}]    Posting notice about #{rel.full_name} #{rel.version}"
           rel.avatar_url = fix_media_url(rel.avatar_url, config) if rel.avatar_url
-          config.client.send_message_event(
+          api.send_message_event(
             u[:room],
             'm.room.message',
             msgtype: 'm.notice',
