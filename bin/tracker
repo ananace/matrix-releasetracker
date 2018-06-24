@@ -72,7 +72,8 @@ if $PROGRAM_NAME == __FILE__
           else
             users << {
               name: gh_name.downcase,
-              room: room_id.to_s
+              room: room_id.to_s,
+              last_check: Time.now
             }
           end
 

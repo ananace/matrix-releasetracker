@@ -189,7 +189,7 @@ module MatrixReleasetracker::Backends
     end
 
     def tracked_user(username)
-      tracked_users[username] ||= { last_check: Time.now }
+      tracked_users[username] ||= {}
     end
 
     def paginate(&_block)
