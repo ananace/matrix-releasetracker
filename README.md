@@ -64,6 +64,7 @@ WantedBy=default.target
 - Improve markdown rendering and release not splitting (optional per user)
 - Implement bot-like bang commands to add/remove users and per-user configuration
 - Properly handle releases on moving tags (e.g. neovim/neovim nightly)
+- Handle PGP signatures better, don't just print the signature
 
 ## Contributing
 
