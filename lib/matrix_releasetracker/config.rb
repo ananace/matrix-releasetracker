@@ -49,8 +49,7 @@ module MatrixReleasetracker
             device_id: client.api.device_id,
             validate_certificate: client.api.validate_certificate,
             transaction_id: client.api.instance_variable_get(:@transaction_id),
-            backoff_time: client.api.instance_variable_get(:@backoff_time),
-            next_batch: client.next_batch
+            backoff_time: client.api.instance_variable_get(:@backoff_time)
           }
         )
       )
