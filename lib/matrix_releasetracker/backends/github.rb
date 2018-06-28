@@ -6,6 +6,7 @@ module MatrixReleasetracker::Backends
   class Github < MatrixReleasetracker::Backend
     STAR_EXPIRY = 1 * 24 * 60 * 60
     RELEASE_EXPIRY = 1 * 60 * 60
+    TAGS_RELEASE_EXPIRY = 2 * 60 * 60
     NIL_RELEASE_EXPIRY = 1 * 24 * 60 * 60
     REPODATA_EXPIRY = 2 * 24 * 60 * 60
 
@@ -112,7 +113,7 @@ module MatrixReleasetracker::Backends
         release = client.latest_release(repo, data) rescue nil
       end
 
-      trepo[:next_check] = Time.now + with_stagger(trepo[:latest] ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY)
+      trepo[:next_check] = Time.now + with_stagger(trepo[:latest] ? (allow == :tags ? TAGS_RELEASE_EXPIRY : RELEASE_EXPIRY) : NIL_RELEASE_EXPIRY)
       if release.nil?
         trepo[:latest] = nil
         if trepo[:allow].nil?
