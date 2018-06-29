@@ -56,7 +56,7 @@ module MatrixReleasetracker
     end
 
     def save!
-      api.set_account_data(api.whoami?[:user_id], ACCOUNT_DATA_KEY.to_json, @data)
+      api.set_account_data(api.whoami?[:user_id], ACCOUNT_DATA_KEY, @data)
 
       true
     end
