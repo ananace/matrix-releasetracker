@@ -31,38 +31,43 @@ module MatrixReleasetracker::Backends
         end
       end
 
-      tracked_repos.values
+      persistent_repos.values
     end
 
     def stars(user, data = {})
       user = user.name unless user.is_a? String
-      tuser = tracked_user(user)
+      puser = persistent_user(user)
+      euser = ephemeral_user(user)
 
-      return tuser[:repos] if (tuser[:next_check] || Time.new(0)) > Time.now
-      logger.debug "Timeout (#{tuser[:next_check]}) reached on `stars`, refreshing data for user #{user}."
+      return puser[:repos] if (euser[:next_check] || Time.new(0)) > Time.now
+      logger.debug "Timeout (#{euser[:next_check]}) reached on `stars`, refreshing data for user #{user}."
 
       tracked = paginate { client.starred(user, data) }
-      tuser[:repos] = tracked.map(&:full_name)
-      tuser[:next_check] = Time.now + with_stagger(STAR_EXPIRY)
+      puser[:repos] = tracked.map(&:full_name)
+      euser[:next_check] = Time.now + with_stagger(STAR_EXPIRY)
 
-      tuser[:repos]
+      puser[:repos]
     end
 
     def refresh_repo(repo, data = {})
       if repo.is_a? String
-        trepo = tracked_repo(repo)
+        prepo = persistent_repo(repo)
+        erepo = ephemeral_repo(repo)
         repo = client.repository(repo, data)
       end
 
       logger.debug "Forced refresh of stored data for repository #{repo.full_name}"
 
-      trepo ||= tracked_repo(repo.full_name)
+      prepo ||= persistent_repo(repo.full_name)
+      erepo ||= ephemeral_repo(repo.full_name)
 
-      trepo.merge!(
+      prepo.merge!(
         avatar_url: repo.owner.avatar_url,
         full_name: repo.full_name,
         name: repo.name,
-        html_url: repo.html_url,
+        html_url: repo.html_url
+      )
+      erepo.merge!(
         next_data_sync: Time.now + with_stagger(REPODATA_EXPIRY)
       )
 
@@ -71,15 +76,16 @@ module MatrixReleasetracker::Backends
 
     def latest_release(repo, data = {})
       repo = repo.full_name unless repo.is_a? String
-      trepo = tracked_repo(repo)
+      prepo = persistent_repo(repo)
+      erepo = ephemeral_repo(repo)
 
-      refresh_repo(repo, data) if (trepo[:next_data_sync] || Time.new(0)) < Time.now
-      refresh_repo(repo, data) unless (trepo.keys & %i[full_name name html_url]).count == 3
+      refresh_repo(repo, data) unless (prepo.keys & %i[full_name name html_url]).count == 3
+      refresh_repo(repo, data) if (erepo[:next_data_sync] ||= Time.now) < Time.now
 
-      return trepo[:latest] if (trepo[:next_check] || Time.new(0)) > Time.now
-      logger.debug "Timeout (#{trepo[:next_check]}) reached on `latest_release`, refreshing data for repository #{repo}"
+      return erepo[:latest] if (erepo[:next_check] || Time.new(0)) > Time.now
+      logger.debug "Timeout (#{erepo[:next_check]}) reached on `latest_release`, refreshing data for repository #{repo}"
 
-      allow = trepo.fetch(:allow, :releases)
+      allow = prepo.fetch(:allow, :releases)
 
       if allow == :tags
         logger.debug "Reading tags for repository #{repo}"
@@ -113,16 +119,16 @@ module MatrixReleasetracker::Backends
         release = client.latest_release(repo, data) rescue nil
       end
 
-      trepo[:next_check] = Time.now + with_stagger(trepo[:latest] ? (allow == :tags ? TAGS_RELEASE_EXPIRY : RELEASE_EXPIRY) : NIL_RELEASE_EXPIRY)
+      erepo[:next_check] = Time.now + with_stagger(erepo[:latest] ? (allow == :tags ? TAGS_RELEASE_EXPIRY : RELEASE_EXPIRY) : NIL_RELEASE_EXPIRY)
       if release.nil?
-        trepo[:latest] = nil
-        if trepo[:allow].nil?
+        erepo[:latest] = nil
+        if prepo[:allow].nil?
           logger.debug "No latest release for repository #{repo}, checking for tags..."
           refs = per_page(1) { client.refs(repo, 'tags', data) } rescue nil
 
           unless refs.nil? || refs.empty?
-            trepo[:allow] = :tags
-            trepo[:next_check] = Time.now
+            prepo[:allow] = :tags
+            erepo[:next_check] = Time.now
           end
         end
         return
@@ -130,7 +136,7 @@ module MatrixReleasetracker::Backends
 
       relbody = release.body
 
-      trepo[:latest] = [release].compact.map do |rel|
+      erepo[:latest] = [release].compact.map do |rel|
         {
           name: rel.name,
           tag_name: rel.tag_name,
@@ -191,20 +197,36 @@ module MatrixReleasetracker::Backends
       value + (Random.rand - 0.5) * (value / 2.0)
     end
 
-    def tracked_repos
+    def persistent_repos
       (config[:tracked] ||= {})[:repos] ||= {}
     end
 
-    def tracked_repo(reponame)
-      tracked_repos[reponame] ||= {}
+    def persistent_repo(reponame)
+      persistent_repos[reponame] ||= {}
     end
 
-    def tracked_users
+    def ephemeral_repos
+      @ephemeral_repos ||= {}
+    end
+
+    def ephemeral_repo(reponame)
+      ephemeral_repos[reponame] ||= {}
+    end
+
+    def persistent_users
       (config[:tracked] ||= {})[:users] ||= {}
     end
 
-    def tracked_user(username)
-      tracked_users[username] ||= {}
+    def persistent_user(username)
+      persistent_users[username] ||= {}
+    end
+
+    def ephemeral_users
+      @ephemeral_users ||= {}
+    end
+
+    def ephemeral_user(username)
+      ephemeral_users[username] ||= {}
     end
 
     def paginate(&_block)
