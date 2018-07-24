@@ -1,4 +1,3 @@
-require 'json'
 require 'octokit'
 require 'faraday-http-cache'
 require 'set'
@@ -25,8 +24,8 @@ module MatrixReleasetracker::Backends
     def post_update
       # Cache ephemeral data between starts
       Dir.mkdir ephemeral_storage unless Dir.exist? ephemeral_storage
-      File.write(File.join(ephemeral_storage, 'ephemeral_repos.json'), @ephemeral_repos.to_json)
-      File.write(File.join(ephemeral_storage, 'ephemeral_users.json'), @ephemeral_users.to_json)
+      File.write(File.join(ephemeral_storage, 'ephemeral_repos.yml'), @ephemeral_repos.to_yaml)
+      File.write(File.join(ephemeral_storage, 'ephemeral_users.yml'), @ephemeral_users.to_yaml)
     end
 
     def logger
@@ -244,8 +243,8 @@ module MatrixReleasetracker::Backends
 
     def ephemeral_repos
       @ephemeral_repos ||= begin
-        file = File.join(ephemeral_storage, 'ephemeral_repos.json')
-        ret = JSON.parse(File.read(file), symbolize_names: true) if File.exist? file
+        file = File.join(ephemeral_storage, 'ephemeral_repos.yml')
+        ret = Psych.load(File.read(file)) if File.exist? file
         ret ||= {}
         ret
       end
@@ -265,8 +264,8 @@ module MatrixReleasetracker::Backends
 
     def ephemeral_users
       @ephemeral_users ||= begin
-        file = File.join(ephemeral_storage, 'ephemeral_users.json')
-        ret = JSON.parse(File.read(file), symbolize_names: true) if File.exist? file
+        file = File.join(ephemeral_storage, 'ephemeral_users.yml')
+        ret = Psych.load(File.read(file)) if File.exist? file
         ret ||= {}
         ret
       end
