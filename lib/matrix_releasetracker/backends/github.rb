@@ -168,7 +168,7 @@ module MatrixReleasetracker::Backends
 
     def last_releases(user = config[:user])
       data = { headers: {} }
-      thread_count = 5
+      thread_count = config[:threads] || 5
 
       user_stars = stars(user)
       per_batch = user_stars.count / thread_count
