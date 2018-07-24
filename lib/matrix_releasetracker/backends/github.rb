@@ -10,6 +10,16 @@ module MatrixReleasetracker::Backends
     NIL_RELEASE_EXPIRY = 1 * 24 * 60 * 60
     REPODATA_EXPIRY = 2 * 24 * 60 * 60
 
+    def initialize(config)
+      # Clean up old configuration junk
+      # if config.key? :tracked
+      #   config[:tracked][:users].each { |u| u.delete :last_check; u.delete :next_check }
+      #   config[:tracked][:repos].each { |r| r.delete :latest; r.delete :next_data_sync; r.delete :next_check }
+      # end
+
+      super config
+    end
+
     def logger
       Logging.logger[self.class.name]
     end
