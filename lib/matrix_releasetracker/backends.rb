@@ -12,7 +12,11 @@ module MatrixReleasetracker
 
     def initialize(config)
       @config = config
+
+      post_load
     end
+
+    def post_load; end
 
     def post_update; end
 

@@ -11,14 +11,12 @@ module MatrixReleasetracker::Backends
     NIL_RELEASE_EXPIRY = 1 * 24 * 60 * 60
     REPODATA_EXPIRY = 2 * 24 * 60 * 60
 
-    def initialize(config)
-      # Clean up old configuration junk
-      if config.key? :tracked
-        config[:tracked][:users].each { |u| %i[last_check next_check].each { |v| u.delete v } }
-        config[:tracked][:repos].each { |r| %i[latest next_data_sync next_check].each { |v| r.delete v } }
-      end
+    def post_load
+      return unless config.key? :tracked
 
-      super config
+      # Clean up old configuration junk
+      config[:tracked][:users].each { |_k, u| %i[last_check next_check].each { |v| u.delete v } }
+      config[:tracked][:repos].each { |_k, r| %i[latest next_data_sync next_check].each { |v| r.delete v } }
     end
 
     def post_update
