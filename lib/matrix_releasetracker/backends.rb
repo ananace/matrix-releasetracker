@@ -14,6 +14,8 @@ module MatrixReleasetracker
       @config = config
     end
 
+    def post_update; end
+
     def name
       self.class.name.split(':').last
     end

@@ -1,6 +1,8 @@
+require 'json'
 require 'octokit'
 require 'faraday-http-cache'
 require 'set'
+require 'tmpdir'
 
 module MatrixReleasetracker::Backends
   class Github < MatrixReleasetracker::Backend
@@ -12,12 +14,19 @@ module MatrixReleasetracker::Backends
 
     def initialize(config)
       # Clean up old configuration junk
-      # if config.key? :tracked
-      #   config[:tracked][:users].each { |u| u.delete :last_check; u.delete :next_check }
-      #   config[:tracked][:repos].each { |r| r.delete :latest; r.delete :next_data_sync; r.delete :next_check }
-      # end
+      if config.key? :tracked
+        config[:tracked][:users].each { |u| %i[last_check next_check].each { |v| u.delete v } }
+        config[:tracked][:repos].each { |r| %i[latest next_data_sync next_check].each { |v| r.delete v } }
+      end
 
       super config
+    end
+
+    def post_update
+      # Cache ephemeral data between starts
+      Dir.mkdir ephemeral_storage unless Dir.exist? ephemeral_storage
+      File.write(File.join(ephemeral_storage, 'ephemeral_repos.json'), @ephemeral_repos.to_json)
+      File.write(File.join(ephemeral_storage, 'ephemeral_users.json'), @ephemeral_users.to_json)
     end
 
     def logger
@@ -204,6 +213,19 @@ module MatrixReleasetracker::Backends
 
     private
 
+    def ephemeral_storage
+      @ephemeral_storage ||= begin
+        ret = nil
+        [ENV['XDG_CACHE_HOME'], File.join(ENV['HOME'], '.cache')].each do |dir|
+          break if ret
+          ret = dir if dir && (stat = File.stat(dir)) && stat.directory? && stat.writable?
+        end
+        ret ||= Dir.tmpdir
+
+        File.join(ret, 'matrix-releasetracker') # Return tmpdir if everything fails
+      end
+    end
+
     def with_stagger(value)
       value + (Random.rand - 0.5) * (value / 2.0)
     end
@@ -217,7 +239,12 @@ module MatrixReleasetracker::Backends
     end
 
     def ephemeral_repos
-      @ephemeral_repos ||= {}
+      @ephemeral_repos ||= begin
+        file = File.join(ephemeral_storage, 'ephemeral_repos.json')
+        ret = JSON.parse(File.read(file), symbolize_names: true) if File.exist? file
+        ret ||= {}
+        ret
+      end
     end
 
     def ephemeral_repo(reponame)
@@ -233,7 +260,12 @@ module MatrixReleasetracker::Backends
     end
 
     def ephemeral_users
-      @ephemeral_users ||= {}
+      @ephemeral_users ||= begin
+        file = File.join(ephemeral_storage, 'ephemeral_users.json')
+        ret = JSON.parse(File.read(file), symbolize_names: true) if File.exist? file
+        ret ||= {}
+        ret
+      end
     end
 
     def ephemeral_user(username)

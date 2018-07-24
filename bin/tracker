@@ -107,6 +107,8 @@ if $PROGRAM_NAME == __FILE__
 
         u[:last_check] = Time.now if selected_releases.any?
       end
+
+      b.post_update
     end
 
     config.save!
