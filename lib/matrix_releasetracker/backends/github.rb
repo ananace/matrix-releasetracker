@@ -142,28 +142,42 @@ module MatrixReleasetracker::Backends
     end
 
     def last_releases(user = config[:user])
-      ret = { releases: {} }
       data = { headers: {} }
+      thread_count = 5
 
-      stars(user).each do |star|
-        latest = latest_release(star, data)
-        next if latest.nil?
+      user_stars = stars(user)
+      per_batch = user_stars.count / thread_count
+      threads = []
 
-        repo = tracked_repo(star)
-        ret[:releases][star] = [latest].compact.map do |rel|
-          MatrixReleasetracker::Release.new.tap do |store|
-            store.namespace = repo[:full_name].split('/')[0..-2].join '/'
-            store.name = repo[:name]
-            store.version = rel[:tag_name]
-            store.version_name = rel[:name]
-            store.publish_date = rel[:published_at]
-            store.release_notes = rel[:body]
-            store.repo_url = repo[:html_url]
-            store.release_url = rel[:html_url]
-            store.avatar_url = repo[:avatar_url] ? repo[:avatar_url] + '&s=32' : 'https://avatars1.githubusercontent.com/u/9919?s=32&v=4'
+      user_stars.each_slice(per_batch) do |stars|
+        threads << Thread.new do
+          ret = {}
+
+          stars.each do |star|
+            latest = latest_release(star, data)
+            next if latest.nil?
+
+            repo = persistent_repo(star).freeze
+            ret[star] = [latest].compact.map do |rel|
+              MatrixReleasetracker::Release.new.tap do |store|
+                store.namespace = repo[:full_name].split('/')[0..-2].join '/'
+                store.name = repo[:name]
+                store.version = rel[:tag_name]
+                store.version_name = rel[:name]
+                store.publish_date = rel[:published_at]
+                store.release_notes = rel[:body]
+                store.repo_url = repo[:html_url]
+                store.release_url = rel[:html_url]
+                store.avatar_url = repo[:avatar_url] ? repo[:avatar_url] + '&s=32' : 'https://avatars1.githubusercontent.com/u/9919?s=32&v=4'
+              end
+            end.first
           end
-        end.first
+
+          ret
+        end
       end
+
+      ret = { releases: threads.map(&:value).reduce({}, :merge) }
 
       ret[:last_check] = config[:last_check] if config.key? :last_check
       config[:last_check] = Time.now
