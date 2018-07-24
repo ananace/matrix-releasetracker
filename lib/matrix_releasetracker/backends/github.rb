@@ -167,43 +167,47 @@ module MatrixReleasetracker::Backends
     end
 
     def last_releases(user = config[:user])
-      data = { headers: {} }
-      thread_count = config[:threads] || 5
+      update_data = lambda do |stars|
+        data = { headers: {} }
+        ret = {}
 
-      user_stars = stars(user)
-      per_batch = user_stars.count / thread_count
-      per_batch = user_stars.count if per_batch.zero?
-      threads = []
+        stars.each do |star|
+          latest = latest_release(star, data)
+          next if latest.nil?
 
-      user_stars.each_slice(per_batch) do |stars|
-        threads << Thread.new do
-          ret = {}
-
-          stars.each do |star|
-            latest = latest_release(star, data)
-            next if latest.nil?
-
-            repo = persistent_repo(star).freeze
-            ret[star] = [latest].compact.map do |rel|
-              MatrixReleasetracker::Release.new.tap do |store|
-                store.namespace = repo[:full_name].split('/')[0..-2].join '/'
-                store.name = repo[:name]
-                store.version = rel[:tag_name]
-                store.version_name = rel[:name]
-                store.publish_date = rel[:published_at]
-                store.release_notes = rel[:body]
-                store.repo_url = repo[:html_url]
-                store.release_url = rel[:html_url]
-                store.avatar_url = repo[:avatar_url] ? repo[:avatar_url] + '&s=32' : 'https://avatars1.githubusercontent.com/u/9919?s=32&v=4'
-              end
-            end.first
-          end
-
-          ret
+          repo = persistent_repo(star).freeze
+          ret[star] = [latest].compact.map do |rel|
+            MatrixReleasetracker::Release.new.tap do |store|
+              store.namespace = repo[:full_name].split('/')[0..-2].join '/'
+              store.name = repo[:name]
+              store.version = rel[:tag_name]
+              store.version_name = rel[:name]
+              store.publish_date = rel[:published_at]
+              store.release_notes = rel[:body]
+              store.repo_url = repo[:html_url]
+              store.release_url = rel[:html_url]
+              store.avatar_url = repo[:avatar_url] ? repo[:avatar_url] + '&s=32' : 'https://avatars1.githubusercontent.com/u/9919?s=32&v=4'
+            end
+          end.first
         end
+
+        ret
       end
 
-      ret = { releases: threads.map(&:value).reduce({}, :merge) }
+      thread_count = config[:threads] || 1
+      user_stars = stars(user)
+      ret = if thread_count > 1
+              per_batch = user_stars.count / thread_count
+              per_batch = user_stars.count if per_batch.zero?
+              threads = []
+              user_stars.each_slice(per_batch) do |stars|
+                threads << Thread.new { update_data.call(stars) }
+              end
+
+              { releases: threads.map(&:value).reduce({}, :merge) }
+            else
+              { releases: update_data.call(user_stars) }
+            end
 
       ret[:last_check] = config[:last_check] if config.key? :last_check
       config[:last_check] = Time.now
