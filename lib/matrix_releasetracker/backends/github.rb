@@ -163,6 +163,7 @@ module MatrixReleasetracker::Backends
 
       user_stars = stars(user)
       per_batch = user_stars.count / thread_count
+      per_batch = user_stars.count if per_batch.zero?
       threads = []
 
       user_stars.each_slice(per_batch) do |stars|
