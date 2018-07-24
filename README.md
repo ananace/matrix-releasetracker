@@ -58,10 +58,10 @@ WantedBy=default.target
 ## TODO
 
 - Store data in an actual database, not the config file
-- Track releases in separate data structures - maybe partially on Matrix, map against update timestamps on each user
+- ~~Track releases in separate data structures~~ - maybe partially on Matrix, map against update timestamps on each user
   - Allow requesting pre-release releases as well (Will require proper data storage)
   - Don't lose releases when multiple releases are done a short period
-- Improve markdown rendering and release not splitting (optional per user)
+- Improve markdown rendering and release note splitting (optional per user)
 - Implement bot-like bang commands to add/remove users and per-user configuration
 - Properly handle releases on moving tags (e.g. neovim/neovim nightly)
 - Handle PGP signatures better, don't just print the signature
