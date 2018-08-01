@@ -172,7 +172,7 @@ module MatrixReleasetracker::Backends
           latest = latest_release(star, data)
           next if latest.nil?
 
-          repo = persistent_repo(star).freeze
+          repo = persistent_repo(star)
           ret[star] = [latest].compact.map do |rel|
             MatrixReleasetracker::Release.new.tap do |store|
               store.namespace = repo[:full_name].split('/')[0..-2].join '/'
