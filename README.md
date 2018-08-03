@@ -1,5 +1,6 @@
 # Matrix Releasetracker
 
+For more information, questions, or just the use of the hosted version, you can visit [#releasetracker:kittenface.studio](https://matrix.to/#/#releasetracker:kittenface.studio).
 
 ## Installation
 
