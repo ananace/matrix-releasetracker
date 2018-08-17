@@ -109,6 +109,7 @@ module MatrixReleasetracker::Backends
 
         # GitHub sorts refs lexicographically, not by date
         ref_name = Net::HTTP.get(URI("https://github.com/#{repo}/tags"))[/tag-name">(.*)<\/span>/, 1]
+        return nil unless ref_name
         ref = refs.find { |r| r.respond_to?(:ref) && r.ref.end_with?(ref_name) } || refs.last
 
         tag = ref.object.rels[:self].get.data if ref && ref.object.type == 'tag'
