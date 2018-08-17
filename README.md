@@ -1,21 +1,8 @@
 # Matrix Releasetracker
 
+For more information, questions, or just the use of the hosted version, you can visit [#releasetracker:kittenface.studio](https://matrix.to/#/#releasetracker:kittenface.studio).
 
-## Installation
-
-Add this line to your application's Gemfile:
-
-```ruby
-gem 'matrix_releasetracker', git: 'https://github.com/ananace/matrix_releasetracker'
-```
-
-And then execute:
-
-    $ bundle
-
-Or install it yourself as:
-
-    $ gem install matrix_releasetracker
+![Example image](https://i.imgur.com/iAP1rMs.png)
 
 ## Usage
 
