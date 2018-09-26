@@ -31,8 +31,8 @@ if $PROGRAM_NAME == __FILE__
     users = api.get_room_members(room)[:chunk].select { |c| c[:content][:membership] == 'join' }
     next if users.count > 1
 
-    STDERR.puts "[#{Time.now.strftime '%F %T'}] Room #{u[:room]} is empty, leaving."
-    config.backends.each do |b|
+    STDERR.puts "[#{Time.now.strftime '%F %T'}] Room #{room} is empty, leaving."
+    config.backends.each do |_k, b|
       b.users.delete_if { |u| u[:room] == room }
     end
 
