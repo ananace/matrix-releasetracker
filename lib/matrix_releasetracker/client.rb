@@ -7,18 +7,25 @@ module MatrixReleasetracker
     ACCOUNT_DATA_FILTER = {
       presence: { types: [] },
       account_data: { limit: 1, types: [ACCOUNT_DATA_KEY] },
-      room: { rooms: [] }
-    }.freeze
-
-    ROOM_ACCOUNT_DATA_FILTER = {
-      presence: { types: [] },
-      account_data: { types: [] },
       room: {
         rooms: [],
         ephemeral: { types: [] },
         state: { types: [] },
         timeline: { types: [] },
         account_data: { limit: 1, types: [ACCOUNT_DATA_KEY] }
+      }
+    }.freeze
+
+    PROVISION_MESSAGE_KEY = 'com.github.ananace.RequestTracker.provision'.freeze
+    PROVISION_MESSAGE_FILTER = {
+      presence: { types: [] },
+      account_data: { types: [] },
+      room: {
+        rooms: [],
+        ephemeral: { types: [] },
+        state: { types: [] },
+        timeline: { types: [ROOM_PROVISION_MESSAGE_KEY] },
+        account_data: { types: [] }
       }
     }.freeze
 
