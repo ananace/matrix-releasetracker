@@ -71,7 +71,11 @@ module MatrixReleasetracker
     def reload_with_get
       @data = api.request(:get, :client_r0, "/user/#{@user.user_id}/account_data/#{ACCOUNT_DATA_KEY}")
     rescue MatrixSdk::MatrixRequestError => ex
-      return reload_with_sync if ex.code == 404
+      return {} if ex.httpstatus == 404
+      if ex.httpstatus == 400
+        @use_sync = true
+        return reload_with_sync
+      end
       raise ex
     end
   end
