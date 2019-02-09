@@ -1,0 +1,16 @@
+/.bundle/
+/.git/
+/.yardoc
+/_yardoc/
+/coverage/
+/doc/
+/pkg/
+/spec/reports/
+/test/
+/tmp/
+releasetracker.yml*
+.dockerignore
+.gitignore
+.*.yml
+*.sh
+*.png
