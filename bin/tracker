@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 
 require 'logging'
+require 'optparse'
 require 'matrix_releasetracker'
 require 'net/http'
 
@@ -12,26 +13,56 @@ def fix_media_url(url, config)
   end
 end
 
-if $PROGRAM_NAME == __FILE__
-  config = MatrixReleasetracker::Config.load!
-  STDERR.puts "[#{Time.now.strftime '%F %T'}] Loaded configuration."
+def run!
+  options = {
+    config: 'releasetracker.yml',
+    loglevel: :info,
+    sdk_debug: false
+  }
 
-  # MatrixSdk.debug!
-  Logging.logger['MatrixReleasetracker'].tap do |logger|
-    logger.add_appenders Logging.appenders.stdout
-    logger.level = :debug # :warn
+  opts_parser = OptionParser.new do |opts|
+    opts.banner = "Usage: #{File.basename($PROGRAM_NAME, File.extname($PROGRAM_NAME))} [ARGS...]"
+
+    opts.on('-c', '--config CONFIG', 'specify the config file to use - defaults to "releasetracker.yml"') do |config|
+      options[:config] = config
+    end
+
+    opts.on('-d', 'debug the SDK calls') do
+      options[:sdk_debug] = true
+    end
+
+    opts.on('-v', '--verbose', 'use verbose output') do
+      options[:loglevel] = :debug
+    end
+
+    opts.on('-h', '--help', 'show this text') do
+      puts opts_parser
+      exit
+    end
   end
+  opts_parser.parse!
+
+  MatrixSdk.debug! if options[:sdk_debug]
+  logger = Logging.logger['MatrixReleasetracker'].tap do |log|
+    log.add_appenders Logging.appenders.stderr(
+      layout: Logging::Layouts.pattern(pattern: "[%d|%.1l] %c: %m\n", date_pattern: '%F %T')
+    )
+    log.level = options[:loglevel]
+  end
+
+  config = MatrixReleasetracker::Config.load! options[:config]
+  logger.info 'Loaded configuration.'
 
   api = config.client.api
 
-  STDERR.puts "[#{Time.now.strftime '%F %T'}] Ensuring configured rooms are joined."
+  logger.info 'Ensuring configured rooms are joined.'
   config.backends.map { |_k, b| b.users.map { |u| u[:room] } }.flatten.uniq.each do |room|
     api.join_room(room.to_s)
 
     users = api.get_room_members(room)[:chunk].select { |c| c[:content][:membership] == 'join' }
     next if users.count > 1
 
-    STDERR.puts "[#{Time.now.strftime '%F %T'}] Room #{room} is empty, leaving."
+    logger.info "Room #{room} is empty, leaving."
     config.backends.each do |_k, b|
       b.users.delete_if { |u| u[:room] == room }
     end
@@ -39,24 +70,24 @@ if $PROGRAM_NAME == __FILE__
     api.leave_room(room)
   end
 
-  STDERR.puts "[#{Time.now.strftime '%F %T'}] Starting tracker with #{config.backends.count} backends."
+  logger.info "Starting tracker with #{config.backends.count} backends."
   loop do
-    STDERR.puts "[#{Time.now.strftime '%F %T'}] Checking Matrix client..."
+    logger.info 'Checking Matrix client...'
     api.sync(timeout: 30.0, set_presence: :offline, since: config.client.next_batch).tap do |data|
       config.client.next_batch = data[:next_batch]
 
       data[:rooms][:invite].each do |room_id, _invite|
-        STDERR.puts "[#{Time.now.strftime '%F %T'}]   Invited to #{room_id}."
+        logger.info "  Invited to #{room_id}."
 
         next if config.backends.map { |_k, b| b.users.map { |u| u[:room] } }.flatten.uniq.count > 50
 
-        STDERR.puts "[#{Time.now.strftime '%F %T'}]   Joining #{room_id}."
+        logger.info "  Joining #{room_id}."
         api.join_room(room_id.to_s)
       end
 
       data[:rooms][:join].each do |room_id, join|
         join[:timeline][:events].select { |ev| ev[:type] == 'm.room.message' && ev[:content] && ev[:content][:msgtype] == 'm.text' }.each do |message|
-          STDERR.puts "[#{Time.now.strftime '%F %T'}]   #{message[:sender]} in #{room_id}: #{message[:content][:body]}"
+          logger.info "  #{message[:sender]} in #{room_id}: #{message[:content][:body]}"
 
           next unless message[:content][:body].start_with? '!github '
 
@@ -85,15 +116,15 @@ if $PROGRAM_NAME == __FILE__
     end
 
     config.backends.each do |_k, b|
-      STDERR.puts "[#{Time.now.strftime '%F %T'}] Polling backend #{b.name} with #{b.users.count} users..."
+      logger.info "Polling backend #{b.name} with #{b.users.count} users..."
       b.users.each do |u|
         repos = b.stars(u[:name])
         releases = b.last_releases(u[:name])
-        STDERR.puts "[#{Time.now.strftime '%F %T'}]  Tracking #{repos.count} repositories - #{releases[:releases].count} with releases, for #{u[:name]}."
+        logger.info " Tracking #{repos.count} repositories - #{releases[:releases].count} with releases, for #{u[:name]}."
 
         selected_releases = releases[:releases].reject { |_k, v| v.nil? || v.publish_date < (u[:last_check] || Time.new(0)) }
         selected_releases.each do |_name, rel|
-          STDERR.puts "[#{Time.now.strftime '%F %T'}]    Posting notice about #{rel.full_name} #{rel.version}"
+          logger.info "   Posting notice about #{rel.full_name} #{rel.version}"
           rel.avatar_url = fix_media_url(rel.avatar_url, config) if rel.avatar_url
           api.send_message_event(
             u[:room],
@@ -112,20 +143,22 @@ if $PROGRAM_NAME == __FILE__
     end
 
     config.save!
-    STDERR.puts "[#{Time.now.strftime '%F %T'}] Finished polling, data saved."
+    logger.info 'Finished polling, data saved.'
 
     limits = config.backends.values.map(&:rate_limit)
     limits.each do |l|
-      STDERR.puts "[#{Time.now.strftime '%F %T'}] Limit|#{l.backend.name} #{l.requests - l.remaining} / #{l.requests} used (resets in #{l.resets_in} seconds)"
+      logger.info "Limit|#{l.backend.name} #{l.requests - l.remaining} / #{l.requests} used (resets in #{l.resets_in} seconds)"
     end
     limits = limits.select(&:near_limit)
     if limits.any?
       latest = limits.max(&:resets_in)
 
-      STDERR.puts "[#{Time.now.strftime '%F %T'}] Backend limits almost reached for #{latest.backend.name}, sleeping for #{latest.resets_in / 60.0} minutes"
+      logger.info "Backend limits almost reached for #{latest.backend.name}, sleeping for #{latest.resets_in / 60.0} minutes"
       sleep latest.resets_in
     else
       sleep 15 * 60
     end
   end
 end
+
+run! if $PROGRAM_NAME == __FILE__
