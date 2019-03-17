@@ -1,9 +1,26 @@
 #!/usr/bin/env ruby
 
+require 'json'
 require 'logging'
 require 'optparse'
 require 'matrix_releasetracker'
 require 'net/http'
+
+ROOM_STATE_FILTER = {
+  presence: { senders: [], types: [] },
+  account_data: { senders: [], types: [] },
+  room: {
+    ephemeral: { senders: [], types: [] },
+    state: {
+      types: ['m.room.member'],
+      lazy_load_members: true
+    },
+    timeline: {
+      types: ['m.room.message']
+    },
+    account_data: { senders: [], types: [] }
+  }
+}.freeze
 
 def fix_media_url(url, config)
   config.media[url] ||= begin
@@ -63,9 +80,7 @@ def run!
     next if users.count > 1
 
     logger.info "Room #{room} is empty, leaving."
-    config.backends.each do |_k, b|
-      b.users.delete_if { |u| u[:room] == room }
-    end
+    config.client.users.delete_if { |u| u[:room] == room }
 
     api.leave_room(room)
   end
@@ -73,7 +88,7 @@ def run!
   logger.info "Starting tracker with #{config.backends.count} backends."
   loop do
     logger.info 'Checking Matrix client...'
-    api.sync(timeout: 30.0, set_presence: :offline, since: config.client.next_batch).tap do |data|
+    api.sync(timeout: 5.0, set_presence: :offline, since: config.client.next_batch, filter: ROOM_STATE_FILTER.to_json).tap do |data|
       config.client.next_batch = data[:next_batch]
 
       data[:rooms][:invite].each do |room_id, _invite|
@@ -94,8 +109,7 @@ def run!
           users = api.get_room_members(room_id)[:chunk].select { |c| c[:content][:membership] == 'join' }
           next if users.count > 2
 
-          users = config.backends.find { |k, _v| k == :github }.last.users
-          user = users.find { |u| u[:room] == room_id }
+          user = client.users.find { |u| u[:type] == :github && u[:room] == room_id }
 
           gh_name = message[:content][:body][8..-1]
           next if user && user[:name] == gh_name
@@ -103,11 +117,13 @@ def run!
           if user
             user[:name] = gh_name.downcase
           else
-            users << {
+            client.users << {
               name: gh_name.downcase,
               room: room_id.to_s,
+              type: :github,
               last_check: Time.now
             }
+            config.backends[:github].instance_variable_set :@users, nil
           end
 
           api.send_notice(room_id.to_s, "Now tracking GitHub user '#{gh_name}'")
@@ -122,7 +138,7 @@ def run!
         releases = b.last_releases(u[:name])
         logger.info " Tracking #{repos.count} repositories - #{releases[:releases].count} with releases, for #{u[:name]}."
 
-        selected_releases = releases[:releases].reject { |_k, v| v.nil? || v.publish_date < (u[:last_check] || Time.new(0)) }
+        selected_releases = releases[:releases].reject { |_k, v| v.nil? || v.publish_date < (u.last_check || Time.new(0)) }
         selected_releases.each do |_name, rel|
           logger.info "   Posting notice about #{rel.full_name} #{rel.version}"
           rel.avatar_url = fix_media_url(rel.avatar_url, config) if rel.avatar_url
@@ -136,7 +152,7 @@ def run!
           )
         end
 
-        u[:last_check] = Time.now if selected_releases.any?
+        u.last_check = Time.now if selected_releases.any?
       end
 
       b.post_update

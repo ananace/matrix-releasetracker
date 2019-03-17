@@ -16,6 +16,10 @@ module MatrixReleasetracker
 
       data = Psych.load File.read(filename)
 
+      @client = [data.fetch(:client, {})].map do |config|
+        MatrixReleasetracker::Client.new config
+      end.first
+
       @backends = Hash[data.fetch(:backends, []).map do |config|
         next unless config.key? :type
         type = config.delete(:type).to_s.downcase.to_sym
@@ -23,12 +27,8 @@ module MatrixReleasetracker
         backend = MatrixReleasetracker::Backends.constants.find { |c| c.to_s.downcase.to_sym == type }
         next if backend.nil?
 
-        [type, MatrixReleasetracker::Backends.const_get(backend).new(config)]
+        [type, MatrixReleasetracker::Backends.const_get(backend).new(config, @client)]
       end]
-
-      @client = [data.fetch(:client, {})].map do |config|
-        MatrixReleasetracker::Client.new config
-      end.first
 
       @media = client.data.fetch(:media, data.fetch(:media, {}))
 

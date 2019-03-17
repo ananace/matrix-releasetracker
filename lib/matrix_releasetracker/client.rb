@@ -22,6 +22,7 @@ module MatrixReleasetracker
       @use_sync = configuration.delete(:use_sync) { false }
       @api = MatrixSdk::Api.new configuration.delete(:hs_url), configuration
       @data = {}
+      @room_data = {}
 
       begin
         @user = api.whoami? # TODO: @api.logged_in?
@@ -41,6 +42,17 @@ module MatrixReleasetracker
       data[:next_batch] = batch
     end
 
+    def users
+      data[:users] ||= []
+    end
+
+    def room_data(room_id)
+      @room_data[room_id] ||= api.get_room_account_data(@user.user_id, room_id, ACCOUNT_DATA_KEY)
+    rescue MatrixSdk::MatrixRequestError => err
+      raise err unless err.code == 'M_NOT_FOUND'
+      @room_data[room_id] ||= {}
+    end
+
     def reload!
       if !@use_sync &&
          (api.server_version.name != 'Synapse' ||
@@ -50,11 +62,19 @@ module MatrixReleasetracker
         reload_with_sync
       end
 
+      @room_data.each_key do |room_id|
+        @room_data[room_id] = api.get_room_account_data(@user.user_id, room_id, ACCOUNT_DATA_KEY)
+      end
+
       true
     end
 
     def save!
       api.set_account_data(@user.user_id, ACCOUNT_DATA_KEY, @data)
+
+      @room_data.each do |room_id, data|
+        api.set_room_account_data(@user.user_id, room_id, ACCOUNT_DATA_KEY, data)
+      end
 
       true
     end

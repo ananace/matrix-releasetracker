@@ -10,8 +10,9 @@ module MatrixReleasetracker
       end
     end
 
-    def initialize(config)
+    def initialize(config, client)
       @config = config
+      @m_client = client
 
       post_load
     end
@@ -25,7 +26,12 @@ module MatrixReleasetracker
     end
 
     def users
-      config[:users]
+      @users ||= m_client.users.tap do |arr|
+        arr.concat(config[:users].map { |u| u.merge(backend: name.downcase) }) unless config[:users].empty?
+        config[:users].clear
+      end.select { |u| u[:backend] == name.downcase }.map do |u|
+        Structs::User.new u[:name], u[:room], u[:backend], last_check: u[:last_check]
+      end
     end
 
     def last_releases(_user)
@@ -34,7 +40,7 @@ module MatrixReleasetracker
 
     protected
 
-    attr_reader :config
+    attr_reader :config, :m_client
   end
 
   module Backends

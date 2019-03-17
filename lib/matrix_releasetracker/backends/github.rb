@@ -16,7 +16,10 @@ module MatrixReleasetracker::Backends
 
       # Clean up old configuration junk
       config[:tracked][:users].each { |_k, u| %i[last_check next_check].each { |v| u.delete v } }
-      config[:tracked][:repos].each { |_k, r| %i[latest next_data_sync next_check].each { |v| r.delete v } }
+      config[:tracked].delete :users if config[:tracked][:users].empty?
+      config[:tracked][:repos].each { |_k, r| %i[latest next_data_sync next_check full_name name html_url avatar_url].each { |v| r.delete v } }
+      config[:tracked][:repos].delete_if { |_k, r| r.empty? }
+      config[:tracked].delete :repos if config[:tracked][:repos].empty?
     end
 
     def post_update
@@ -41,13 +44,14 @@ module MatrixReleasetracker::Backends
     end
 
     def all_stars(data = {})
+      raise NotImplementedException
       users.each do |u|
         stars(u, data).each do |repo|
           # refresh_repo(repo)
         end
       end
 
-      persistent_repos.values
+      # persistent_repos.values
     end
 
     def stars(user, data = {})
@@ -55,12 +59,12 @@ module MatrixReleasetracker::Backends
       puser = persistent_user(user)
       euser = ephemeral_user(user)
 
-      return puser[:repos] if (euser[:next_check] || Time.new(0)) > Time.now
-      logger.debug "Timeout (#{euser[:next_check]}) reached on `stars`, refreshing data for user #{user}."
+      return puser[:repos] if puser[:repos] && (puser[:next_check] || Time.new(0)) > Time.now
+      logger.debug "Timeout (#{puser[:next_check]}) reached on `stars`, refreshing data for user #{user}."
 
       tracked = paginate { client.starred(user, data) }
       puser[:repos] = tracked.map(&:full_name)
-      euser[:next_check] = Time.now + with_stagger(STAR_EXPIRY)
+      puser[:next_check] = Time.now + with_stagger(STAR_EXPIRY)
 
       puser[:repos]
     end
@@ -77,7 +81,7 @@ module MatrixReleasetracker::Backends
       prepo ||= persistent_repo(repo.full_name)
       erepo ||= ephemeral_repo(repo.full_name)
 
-      prepo.merge!(
+      erepo.merge!(
         avatar_url: repo.owner.avatar_url,
         full_name: repo.full_name,
         name: repo.name,
@@ -95,7 +99,7 @@ module MatrixReleasetracker::Backends
       prepo = persistent_repo(repo)
       erepo = ephemeral_repo(repo)
 
-      refresh_repo(repo, data) unless (prepo.keys & %i[full_name name html_url]).count == 3
+      refresh_repo(repo, data) unless (erepo.keys & %i[full_name name html_url]).count == 3
       refresh_repo(repo, data) if (erepo[:next_data_sync] ||= Time.now) < Time.now
 
       return erepo[:latest] if (erepo[:next_check] || Time.new(0)) > Time.now
@@ -175,7 +179,7 @@ module MatrixReleasetracker::Backends
           latest = latest_release(star, data)
           next if latest.nil?
 
-          repo = persistent_repo(star)
+          repo = ephemeral_repo(star)
           ret[star] = [latest].compact.map do |rel|
             MatrixReleasetracker::Release.new.tap do |store|
               store.namespace = repo[:full_name].split('/')[0..-2].join '/'
@@ -255,12 +259,8 @@ module MatrixReleasetracker::Backends
       ephemeral_repos[reponame] ||= {}
     end
 
-    def persistent_users
-      (config[:tracked] ||= {})[:users] ||= {}
-    end
-
     def persistent_user(username)
-      persistent_users[username] ||= {}
+      m_client.room_data(users.find { |u| u.name == username }[:room])
     end
 
     def ephemeral_users
