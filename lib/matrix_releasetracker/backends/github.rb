@@ -162,6 +162,8 @@ module MatrixReleasetracker::Backends
           body: relbody
         }
       end.first
+    rescue Octokit::NotFound
+      nil
     end
 
     def last_releases(user = config[:user])
