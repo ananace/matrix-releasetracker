@@ -28,6 +28,8 @@ module MatrixReleasetracker::Backends
       Dir.mkdir ephemeral_storage unless Dir.exist? ephemeral_storage
       File.write(File.join(ephemeral_storage, 'ephemeral_repos.yml'), @ephemeral_repos.to_yaml)
       File.write(File.join(ephemeral_storage, 'ephemeral_users.yml'), @ephemeral_users.to_yaml)
+      # Remove empty repos from tracked config
+      config[:tracked].delete :repos if config[:tracked][:repos].empty?
     end
 
     def logger
