@@ -112,6 +112,7 @@ module MatrixReleasetracker::Backends
 
       allow = prepo.fetch(:allow, :releases)
 
+      erepo[:last_check] = Time.now
       erepo[:next_check] = Time.now + with_stagger(erepo[:latest] ? (allow == :tags ? TAGS_RELEASE_EXPIRY : RELEASE_EXPIRY) : NIL_RELEASE_EXPIRY)
       if allow == :tags
         logger.debug "Reading tags for repository #{repo}"
