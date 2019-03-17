@@ -1,6 +1,7 @@
 require 'octokit'
 require 'faraday-http-cache'
 require 'set'
+require 'time'
 require 'tmpdir'
 
 module MatrixReleasetracker::Backends
@@ -59,7 +60,7 @@ module MatrixReleasetracker::Backends
       puser = persistent_user(user)
       euser = ephemeral_user(user)
 
-      return puser[:repos] if puser[:repos] && (puser[:next_check] || Time.new(0)) > Time.now
+      return puser[:repos] if puser[:repos] && (Time.parse(puser[:next_check]) || Time.new(0)) > Time.now
       logger.debug "Timeout (#{puser[:next_check]}) reached on `stars`, refreshing data for user #{user}."
 
       tracked = paginate { client.starred(user, data) }
@@ -99,6 +100,8 @@ module MatrixReleasetracker::Backends
       prepo = persistent_repo(repo)
       erepo = ephemeral_repo(repo)
 
+      logger.debug "Checking latest release for #{repo}"
+
       refresh_repo(repo, data) unless (erepo.keys & %i[full_name name html_url]).count == 3
       refresh_repo(repo, data) if (erepo[:next_data_sync] ||= Time.now) < Time.now
 
@@ -107,6 +110,7 @@ module MatrixReleasetracker::Backends
 
       allow = prepo.fetch(:allow, :releases)
 
+      erepo[:next_check] = Time.now + with_stagger(erepo[:latest] ? (allow == :tags ? TAGS_RELEASE_EXPIRY : RELEASE_EXPIRY) : NIL_RELEASE_EXPIRY)
       if allow == :tags
         logger.debug "Reading tags for repository #{repo}"
         refs = client.refs(repo, 'tags', data)
@@ -140,7 +144,6 @@ module MatrixReleasetracker::Backends
         release = client.latest_release(repo, data) rescue nil
       end
 
-      erepo[:next_check] = Time.now + with_stagger(erepo[:latest] ? (allow == :tags ? TAGS_RELEASE_EXPIRY : RELEASE_EXPIRY) : NIL_RELEASE_EXPIRY)
       if release.nil?
         erepo[:latest] = nil
         if prepo[:allow].nil?
