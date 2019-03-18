@@ -43,7 +43,7 @@ module MatrixReleasetracker
     end
 
     def users
-      data[:users] ||= []
+      data[:users]
     end
 
     def room_data(room_id)
@@ -62,6 +62,10 @@ module MatrixReleasetracker
         reload_with_sync
       end
 
+      @data[:users] = (@data[:users] || []).map do |u|
+        Structs::User.new u[:name], u[:room], u[:backend], last_check: u.dig(:persistent_data, :last_check)
+      end
+
       @room_data.each_key do |room_id|
         @room_data[room_id] = api.get_room_account_data(@user.user_id, room_id, ACCOUNT_DATA_KEY)
       end
@@ -70,7 +74,10 @@ module MatrixReleasetracker
     end
 
     def save!
-      api.set_account_data(@user.user_id, ACCOUNT_DATA_KEY, @data)
+      to_save = @data.dup.tap do |d|
+        d[:users] = d[:users].map(&:to_h)
+      end
+      api.set_account_data(@user.user_id, ACCOUNT_DATA_KEY, to_save)
 
       @room_data.each do |room_id, data|
         api.set_room_account_data(@user.user_id, room_id, ACCOUNT_DATA_KEY, data)

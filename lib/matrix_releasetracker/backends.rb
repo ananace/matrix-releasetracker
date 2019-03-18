@@ -27,11 +27,9 @@ module MatrixReleasetracker
 
     def users
       @users ||= m_client.users.tap do |arr|
-        arr.concat(config[:users].map { |u| u.merge(backend: name.downcase) }) unless config[:users].empty?
+        arr.concat(config[:users].each { |u| u[:backend] = name.downcase }) unless config[:users].empty?
         config[:users].clear
-      end.select { |u| u[:backend] == name.downcase }.map do |u|
-        Structs::User.new u[:name], u[:room], u[:backend], last_check: u[:last_check]
-      end
+      end.select { |u| u[:backend] == name.downcase }
     end
 
     def last_releases(_user)
