@@ -208,6 +208,18 @@ module MatrixReleasetracker::Backends
 
       thread_count = config[:threads] || 1
       user_stars = stars(user)
+      repo_information = user_stars.map do |repo|
+        erepo = ephemeral_repo(repo)
+        {
+          repo: repo,
+          last_check: erepo[:last_check],
+          next_check: erepo[:next_check],
+          has_release: !erepo[:latest].nil?,
+          uses_tags: erepo[:allow] == :tags
+        }
+      end
+      repo_information.sort_by! { |r| r[:last_check] || Time.new(0) }
+
       ret = if thread_count > 1
               per_batch = user_stars.count / thread_count
               per_batch = user_stars.count if per_batch.zero?
