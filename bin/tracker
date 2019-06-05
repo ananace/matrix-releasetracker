@@ -6,6 +6,21 @@ require 'optparse'
 require 'matrix_releasetracker'
 require 'net/http'
 
+# Fix for issue in Matrix SDK 1.1.0
+unless MatrixSdk::Api.instance_methods.include? :server_version
+  MatrixSdk::Api.class_eval do
+    def server_version
+      MatrixSdk::Response.new(self, request(:get, :federation_v1, '/version').server).tap do |resp|
+        resp.instance_eval <<-'CODE', __FILE__, __LINE__ + 1
+          def to_s
+            "#{name} #{version}"
+          end
+        CODE
+      end
+    end
+  end
+end
+
 ROOM_STATE_FILTER = {
   presence: { senders: [], types: [] },
   account_data: { senders: [], types: [] },
