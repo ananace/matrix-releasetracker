@@ -30,13 +30,15 @@ module MatrixReleasetracker
         [type, MatrixReleasetracker::Backends.const_get(backend).new(config, @client)]
       end]
 
-      @media = client.data.fetch(:media, data.fetch(:media, {}))
+      @media = client.media
+      @media ||= client.data.delete(:media) { nil }
+      @media ||= data.fetch(:media)
 
       true
     end
 
     def save!
-      client.data[:media] = @media
+      client.media = @media
       client.save! if client
 
       File.write(
