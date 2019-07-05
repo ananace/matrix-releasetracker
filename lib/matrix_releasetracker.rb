@@ -6,4 +6,8 @@ require 'matrix_releasetracker/release'
 require 'matrix_releasetracker/structs'
 
 module MatrixReleasetracker
+  module Backends
+    autoload :Github, 'matrix_releasetracker/backends/github'
+    autoload :Gitlab, 'matrix_releasetracker/backends/gitlab'
+  end
 end

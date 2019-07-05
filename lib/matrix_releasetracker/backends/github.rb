@@ -13,21 +13,25 @@ module MatrixReleasetracker::Backends
     REPODATA_EXPIRY = 2 * 24 * 60 * 60
 
     def post_load
+      super
+
       return unless config.key? :tracked
 
       # Clean up old configuration junk
       config[:tracked][:users].each { |_k, u| %i[last_check next_check].each { |v| u.delete v } }
+      config[:tracked][:users].delete_if { |_k, u| u.empty? }
       config[:tracked].delete :users if config[:tracked][:users].empty?
+
       config[:tracked][:repos].each { |_k, r| %i[latest next_data_sync next_check full_name name html_url avatar_url].each { |v| r.delete v } }
       config[:tracked][:repos].delete_if { |_k, r| r.empty? }
       config[:tracked].delete :repos if config[:tracked][:repos].empty?
+
+      config.delete :tracked if config[:tracked].empty?
     end
 
     def post_update
-      # Cache ephemeral data between starts
-      Dir.mkdir ephemeral_storage unless Dir.exist? ephemeral_storage
-      File.write(File.join(ephemeral_storage, 'ephemeral_repos.yml'), @ephemeral_repos.to_yaml)
-      File.write(File.join(ephemeral_storage, 'ephemeral_users.yml'), @ephemeral_users.to_yaml)
+      super
+
       # Remove empty repos from tracked config
       config[:tracked].delete :repos if config[:tracked][:repos].empty?
     end
@@ -241,59 +245,8 @@ module MatrixReleasetracker::Backends
 
     private
 
-    def ephemeral_storage
-      @ephemeral_storage ||= begin
-        ret = nil
-        [ENV['XDG_CACHE_HOME'], File.join(ENV['HOME'], '.cache')].each do |dir|
-          break if ret
-          ret = dir if dir && (stat = File.stat(dir)) && stat.directory? && stat.writable?
-        end
-        ret ||= Dir.tmpdir
-
-        File.join(ret, 'matrix-releasetracker') # Return tmpdir if everything fails
-      end
-    end
-
     def with_stagger(value)
       value + (Random.rand - 0.5) * (value / 2.0)
-    end
-
-    def persistent_repos
-      (config[:tracked] ||= {})[:repos] ||= {}
-    end
-
-    def persistent_repo(reponame)
-      persistent_repos[reponame] ||= {}
-    end
-
-    def ephemeral_repos
-      @ephemeral_repos ||= begin
-        file = File.join(ephemeral_storage, 'ephemeral_repos.yml')
-        ret = Psych.load(File.read(file)) if File.exist? file
-        ret ||= {}
-        ret
-      end
-    end
-
-    def ephemeral_repo(reponame)
-      ephemeral_repos[reponame] ||= {}
-    end
-
-    def persistent_user(username)
-      m_client.room_data(users.find { |u| u.name == username }[:room])
-    end
-
-    def ephemeral_users
-      @ephemeral_users ||= begin
-        file = File.join(ephemeral_storage, 'ephemeral_users.yml')
-        ret = Psych.load(File.read(file)) if File.exist? file
-        ret ||= {}
-        ret
-      end
-    end
-
-    def ephemeral_user(username)
-      ephemeral_users[username] ||= {}
     end
 
     def paginate(&_block)
