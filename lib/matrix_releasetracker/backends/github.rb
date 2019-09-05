@@ -153,6 +153,7 @@ module MatrixReleasetracker::Backends
         release = client.latest_release(repo, data) rescue nil
       end
 
+      # TODO: Handle the case where a repo has old releases but newer tags
       if release.nil?
         erepo[:latest] = nil
         if prepo[:allow].nil?
