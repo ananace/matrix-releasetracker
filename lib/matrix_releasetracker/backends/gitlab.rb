@@ -1,3 +1,5 @@
+require 'gitlab'
+
 module MatrixReleasetracker::Backends
   class Github < MatrixReleasetracker::Backend
 
@@ -32,7 +34,10 @@ module MatrixReleasetracker::Backends
     private
 
     def client
-      @client ||= nil
+      @client ||= Gitlab.client(
+        endpoint: config.fetch('endpoint', 'https://gitlab.com/api/v4'),
+        private_token: config['private_token'],
+      )
     end
   end
 end
