@@ -17,6 +17,10 @@ module MatrixReleasetracker
       post_load
     end
 
+    def logger
+      Logging.logger[self]
+    end
+
     def post_load; end
 
     def post_update

@@ -3,10 +3,6 @@ require 'gitlab'
 module MatrixReleasetracker::Backends
   class Github < MatrixReleasetracker::Backend
 
-    def logger
-      Logging.logger[self.class.name]
-    end
-
     def name
       'GitLab'
     end

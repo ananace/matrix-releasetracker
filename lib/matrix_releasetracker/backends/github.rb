@@ -36,10 +36,6 @@ module MatrixReleasetracker::Backends
       config[:tracked].delete :repos if config[:tracked][:repos].empty?
     end
 
-    def logger
-      Logging.logger[self.class.name]
-    end
-
     def name
       'GitHub'
     end
