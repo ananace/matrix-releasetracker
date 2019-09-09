@@ -12,6 +12,8 @@ module MatrixReleasetracker::Backends
     NIL_RELEASE_EXPIRY = 1 * 24 * 60 * 60
     REPODATA_EXPIRY = 2 * 24 * 60 * 60
 
+    InternalRelease = Struct.new(:tag_name, :name, :date, :url, :description, :type)
+
     def post_load
       super
 
@@ -131,6 +133,11 @@ module MatrixReleasetracker::Backends
               nodes {
                 name
                 target {
+                  __typename
+                  ... on Commit {
+                    pushedDate
+                    message
+                  }
                   ... on Tag {
                     tagger {
                       date
@@ -146,63 +153,42 @@ module MatrixReleasetracker::Backends
 
       erepo[:last_check] = Time.now
       erepo[:next_check] = Time.now + with_stagger(erepo[:latest] ? (allow == :tags ? TAGS_RELEASE_EXPIRY : RELEASE_EXPIRY) : NIL_RELEASE_EXPIRY)
-      if allow == :tags
-        logger.debug "Reading tags for repository #{repo}"
-        refs = client.refs(repo, 'tags', data)
 
-        # GitHub sorts refs lexicographically, not by date
-        ref_name = Net::HTTP.get(URI("https://github.com/#{repo}/tags"))[/tag-name">(.*)<\/span>/, 1]
-        return nil unless ref_name
-        ref = refs.find { |r| r.respond_to?(:ref) && r.ref.end_with?(ref_name) } || refs.last
+      result = client.post '/graphql', { query: graphql }.to_json
 
-        tag = ref.object.rels[:self].get.data if ref && ref.object.type == 'tag'
-        commit = ref.object.rels[:self].get.data if ref && ref.object.type == 'commit'
+      releases = result.data.repository.releases.nodes.map do |release|
+        type = release.isPrerelease ? :prerelease : :release
+        InternalRelease.new(release.tagName, release.name, Time.parse(release.createdAt), release.url, release.description, type)
+      end.group_by(&:tag_name)
 
-        if tag
-          release = Struct.new(:tag_name, :published_at, :html_url, :body) do
-            def name
-              tag_name
-            end
-          end.new(tag.tag, tag.tagger.date, "https://github.com/#{repo}/releases/tag/#{tag.tag}", tag.message.strip)
-        elsif commit
-          tag_name = ref.ref.sub('refs/tags/', '')
-          release = Struct.new(:tag_name, :published_at, :html_url, :body) do
-            def name
-              tag_name
-            end
-          end.new(tag_name, commit.committer.date, "https://github.com/#{repo}/releases/tag/#{tag_name}", nil)
+      result.data.repository.refs.nodes.each do |tag|
+        next if releases.key? tag.name
+
+        url = "https://github.com/#{repo}/releases/tag/#{tag.name}"
+        if tag.target.__typename == 'Commit'
+          releases[tag.name] = InternalRelease.new(tag.name, tag.name, Time.parse(tag.target.pushedDate), url, tag.target.message, :lightweight_tag)
+        else
+          releases[tag.name] = InternalRelease.new(tag.name, tag.name, tag.target.tagger.date, url, tag.target.message, :tag)
         end
-      elsif allow == :prereleases
-        logger.debug "Reading pre-releases for repository #{repo}"
-        release = per_page(5) { client.releases(repo, data) }.first
-      else
-        release = client.latest_release(repo, data) rescue nil
       end
 
-      # TODO: Handle the case where a repo has old releases but newer tags
-      if release.nil?
-        erepo[:latest] = nil
-        if prepo[:allow].nil?
-          logger.debug "No latest release for repository #{repo}, checking for tags..."
-          refs = per_page(1) { client.refs(repo, 'tags', data) } rescue nil
+      allow = prepo.fetch(:allow, :releases)
 
-          unless refs.nil? || refs.empty?
-            prepo[:allow] = :tags
-            erepo[:next_check] = Time.now
-          end
-        end
-        return
+      releases = releases.values.flatten.compact
+
+      if allow != :prereleases
+        releases = releases.reject { |r| r.type == :prerelease }
       end
 
-      relbody = release.body
-
+      release = releases.sort { |a, b| a.date <=> b.date }.last
       erepo[:latest] = [release].compact.map do |rel|
         {
           name: rel.name,
           tag_name: rel.tag_name,
-          published_at: rel.published_at,
-          html_url: rel.html_url,
-          body: relbody
+          published_at: rel.date,
+          html_url: rel.url,
+          body: rel.description,
+          type: rel.type
         }
       end.first
     rescue Octokit::NotFound
