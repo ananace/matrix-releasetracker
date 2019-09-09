@@ -112,6 +112,30 @@ module MatrixReleasetracker::Backends
       return erepo[:latest] if (erepo[:next_check] || Time.new(0)) > Time.now
       logger.debug "Timeout (#{erepo[:next_check]}) reached on `latest_release`, refreshing data for repository #{repo}"
 
+      # TODO
+      graphql = <<~GQL
+      query {
+        repository(owner:"#{repo.split('/').first}", name:"#{repo.split('/').last}") {
+          releases(last: 5) {
+            edges {
+              node {
+                name
+                description
+              }
+            }
+          }
+          tags(last: 5) {
+            edges {
+              node {
+                name
+                description
+              }
+            }
+          }
+        }
+      }
+      GQL
+
       allow = prepo.fetch(:allow, :releases)
 
       erepo[:last_check] = Time.now
