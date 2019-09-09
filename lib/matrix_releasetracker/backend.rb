@@ -1,12 +1,12 @@
 module MatrixReleasetracker
   class Backend
-    RateLimit = Struct.new('RateLimit', :backend, :requests, :remaining, :resets_at, :resets_in) do
+    RateLimit = Struct.new('RateLimit', :backend, :name, :requests, :remaining, :resets_at, :resets_in) do
       def near_limit
         remaining <= requests * 0.05
       end
 
       def to_s
-        "#{backend.name}: Used #{requests - remaining}/#{requests} (#{(remaining / requests) * 100}%), resets in #{resets_in} seconds"
+        "#{backend.name}/#{name}: Used #{requests - remaining}/#{requests} (#{(remaining / requests) * 100}%), resets in #{resets_in} seconds"
       end
     end
 
@@ -19,6 +19,12 @@ module MatrixReleasetracker
 
     def logger
       Logging.logger[self]
+    end
+
+    def rate_limit; end
+
+    def rate_limits
+      [rate_limit].compact
     end
 
     def post_load; end

@@ -48,6 +48,24 @@ module MatrixReleasetracker::Backends
       RateLimit.new(self, limit.limit, limit.remaining, limit.resets_at, limit.resets_in)
     end
 
+    def rate_limits
+      rest_limit = client.rate_limit
+      graphql = <<~GQL
+        query {
+          rateLimit { limit remaining resetAt }
+        }
+      GQL
+
+      result = client.post '/graphql', { query: graphql }.to_json
+
+      graphql_limit = result.data.rateLimit
+
+      [
+        RateLimit.new(self, 'REST', rest_limit.limit, rest_limit.remaining, rest_limit.resets_at, rest_limit.resets_in),
+        RateLimit.new(self, 'GraphQL', graphql_limit.limit, graphql_limit.remaining, Time.parse(graphql_limit.resetAt), Time.parse(graphql_limit.resetAt) - Time.now)
+      ]
+    end
+
     def all_stars(data = {})
       raise NotImplementedException
       users.each do |u|
