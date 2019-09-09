@@ -30,10 +30,10 @@ module MatrixReleasetracker::Backends
     private
 
     def client
-      @client ||= Gitlab.client(
+      @client ||= Gitlab.client({
         endpoint: config.fetch('endpoint', 'https://gitlab.com/api/v4'),
         private_token: config['private_token'],
-      )
+      }.compact)
     end
   end
 end
