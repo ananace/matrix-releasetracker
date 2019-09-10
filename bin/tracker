@@ -176,16 +176,16 @@ def run!
     config.save!
     logger.info 'Finished polling, data saved.'
 
-    limits = config.backends.values.map(&:rate_limit)
+    limits = config.backends.values.map(&:rate_limits).flatten
     limits.each do |l|
-      logger.info "Limit|#{l.backend.name} #{l.requests - l.remaining} / #{l.requests} used (resets in #{l.resets_in} seconds)"
+      logger.info "Limit|#{l.backend.name}/#{l.name} #{l.requests - l.remaining} / #{l.requests} used (resets in #{l.resets_in} seconds)"
     end
     limits = limits.select(&:near_limit)
     if limits.any?
       latest = limits.max(&:resets_in)
 
-      logger.info "Backend limits almost reached for #{latest.backend.name}, sleeping for #{latest.resets_in / 60.0} minutes"
-      sleep latest.resets_in
+      logger.info "Backend limits almost reached for #{latest.backend.name}, sleeping for at least #{latest.resets_in / 60.0} minutes"
+      sleep [latest.resets_in, 15 * 60].max
     else
       sleep 15 * 60
     end
