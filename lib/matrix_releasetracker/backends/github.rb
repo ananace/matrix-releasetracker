@@ -153,6 +153,7 @@ module MatrixReleasetracker::Backends
                 target {
                   __typename
                   ... on Commit {
+                    committedDate
                     pushedDate
                     message
                   }
@@ -187,7 +188,8 @@ module MatrixReleasetracker::Backends
 
         url = "https://github.com/#{repo}/releases/tag/#{tag.name}"
         if tag.target.__typename == 'Commit'
-          releases[tag.name] = InternalRelease.new(tag.name, tag.name, Time.parse(tag.target.pushedDate), url, tag.target.message, :lightweight_tag)
+          time = Time.parse(tag.target.pushedDate || tag.target.committedDate)
+          releases[tag.name] = InternalRelease.new(tag.name, tag.name, time, url, tag.target.message, :lightweight_tag)
         else
           releases[tag.name] = InternalRelease.new(tag.name, tag.name, tag.target.tagger.date, url, tag.target.message, :tag)
         end
