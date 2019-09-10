@@ -57,7 +57,6 @@ module MatrixReleasetracker::Backends
       GQL
 
       result = client.post '/graphql', { query: graphql }.to_json
-
       graphql_limit = result.data.rateLimit
 
       [
