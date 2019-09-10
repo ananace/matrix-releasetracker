@@ -57,7 +57,7 @@ module MatrixReleasetracker::Backends
         }
       GQL
 
-      result = client.post '/graphql', { query: graphql }.to_json
+      result = gql_client.post '/graphql', { query: graphql }.to_json
       graphql_limit = result.data.rateLimit
 
       [
@@ -175,7 +175,7 @@ module MatrixReleasetracker::Backends
       erepo[:last_check] = Time.now
       erepo[:next_check] = Time.now + with_stagger(erepo[:latest] ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY)
 
-      result = client.post '/graphql', { query: graphql }.to_json
+      result = gql_client.post '/graphql', { query: graphql }.to_json
 
       releases = result.data.repository.releases.nodes.map do |release|
         type = release.isPrerelease ? :prerelease : :release
@@ -295,13 +295,23 @@ module MatrixReleasetracker::Backends
       client.per_page = opp
     end
 
+    def gql_client
+      @gql_client ||= use_stack(if config.key?(:access_token)
+                                  Octokit::Client.new access_token: config[:access_token]
+                                elsif config.key?(:login) && config.key?(:password)
+                                  Octokit::Client.new login: config[:login], password: config[:password]
+                                else
+                                  raise ArgumentError, 'GraphQL access on the GitHub API requires account access'
+                                end)
+    end
+
     def client
-      @client ||= use_stack(if config.key?(:access_token)
+      @client ||= use_stack(if config.key?(:client_id) && config.key?(:client_secret)
+                              Octokit::Client.new client_id: config[:client_id], client_secret: config[:client_secret]
+                            elsif config.key?(:access_token)
                               Octokit::Client.new access_token: config[:access_token]
                             elsif config.key?(:login) && config.key?(:password)
                               Octokit::Client.new login: config[:login], password: config[:password]
-                            elsif config.key?(:client_id) && config.key?(:client_secret)
-                              Octokit::Client.new client_id: config[:client_id], client_secret: config[:client_secret]
                             else
                               Octokit::Client.new
                             end)
