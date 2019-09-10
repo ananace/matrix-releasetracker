@@ -168,6 +168,7 @@ module MatrixReleasetracker::Backends
         }
       GQL
 
+      allow = prepo.fetch(:allow, :releases)
       erepo[:last_check] = Time.now
       erepo[:next_check] = Time.now + with_stagger(erepo[:latest] ? (allow == :tags ? TAGS_RELEASE_EXPIRY : RELEASE_EXPIRY) : NIL_RELEASE_EXPIRY)
 
@@ -188,8 +189,6 @@ module MatrixReleasetracker::Backends
           releases[tag.name] = InternalRelease.new(tag.name, tag.name, tag.target.tagger.date, url, tag.target.message, :tag)
         end
       end
-
-      allow = prepo.fetch(:allow, :releases)
 
       releases = releases.values.flatten.compact
 
