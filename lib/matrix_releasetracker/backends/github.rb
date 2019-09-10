@@ -25,6 +25,7 @@ module MatrixReleasetracker::Backends
       config[:tracked].delete :users if config[:tracked][:users].empty?
 
       config[:tracked][:repos].each { |_k, r| %i[latest next_data_sync next_check full_name name html_url avatar_url].each { |v| r.delete v } }
+      config[:tracked][:repos].each { |_k, r| r.delete :allow if r[:allow].is_a? Symbol }
       config[:tracked][:repos].delete_if { |_k, r| r.empty? }
       config[:tracked].delete :repos if config[:tracked][:repos].empty?
 
@@ -168,9 +169,11 @@ module MatrixReleasetracker::Backends
         }
       GQL
 
-      allow = prepo.fetch(:allow, :releases)
+      allow = prepo.fetch(:allow, nil)
+      allow = [:lightweight_tag, :tag, :release] unless allow.is_a? Array
+
       erepo[:last_check] = Time.now
-      erepo[:next_check] = Time.now + with_stagger(erepo[:latest] ? (allow == :tags ? TAGS_RELEASE_EXPIRY : RELEASE_EXPIRY) : NIL_RELEASE_EXPIRY)
+      erepo[:next_check] = Time.now + with_stagger(erepo[:latest] ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY)
 
       result = client.post '/graphql', { query: graphql }.to_json
 
@@ -190,11 +193,7 @@ module MatrixReleasetracker::Backends
         end
       end
 
-      releases = releases.values.flatten.compact
-
-      if allow != :prereleases
-        releases = releases.reject { |r| r.type == :prerelease }
-      end
+      releases = releases.values.flatten.compact.select { |r| allow.include? r.type }
 
       release = releases.sort { |a, b| a.date <=> b.date }.last
       erepo[:latest] = [release].compact.map do |rel|
