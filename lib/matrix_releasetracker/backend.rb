@@ -6,7 +6,7 @@ module MatrixReleasetracker
       end
 
       def to_s
-        "#{backend.name}/#{name}: Used #{requests - remaining}/#{requests} (#{(remaining / requests) * 100}%), resets in #{resets_in} seconds"
+        "#{backend.name}/#{name}: Used #{requests - remaining}/#{requests} (#{(remaining / requests) * 100}%), resets in #{resets_in.to_i} seconds"
       end
     end
 

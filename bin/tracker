@@ -178,7 +178,7 @@ def run!
 
     limits = config.backends.values.map(&:rate_limit)
     limits.each do |l|
-      logger.info "Limit|#{l.backend.name} #{l.requests - l.remaining} / #{l.requests} used (resets in #{l.resets_in} seconds)"
+      logger.info "Limit|#{l}"
     end
     limits = limits.select(&:near_limit)
     if limits.any?
