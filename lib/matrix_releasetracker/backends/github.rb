@@ -138,16 +138,16 @@ module MatrixReleasetracker::Backends
       allow = prepo.fetch(:allow, nil)
       allow = [:lightweight_tag, :tag, :release] unless allow.is_a? Array
 
-      erepo[:latest] = find_releases(repo).select { |r| allow.include? r.type }.last
+      if gql_available?
+        erepo[:latest] = find_gql_releases(repo, prepo, erepo).select { |r| allow.include? r.type }.last
+      elsif allow.include? :release
+        erepo[:latest] = find_rest_releases(repo, prepo, erepo).last
+      end
     rescue Octokit::NotFound
       nil
     end
 
-    def find_releases(repo)
-      repo = repo.full_name unless repo.is_a? String
-      prepo = persistent_repo(repo)
-      erepo = ephemeral_repo(repo)
-
+    def find_gql_releases(repo, prepo, ereop)
       graphql = <<~GQL
         query {
           repository(owner:"#{repo.split('/').first}", name:"#{repo.split('/').last}") {
@@ -218,6 +218,22 @@ module MatrixReleasetracker::Backends
           html_url: rel.url,
           body: rel.description,
           type: rel.type
+        }
+      end
+    end
+
+    def find_rest_releases(repo, prepo, erepo)
+      releases = per_page(5) { client.releases(repo) }.reject { |r| r.published_at.nil? }
+
+      releases.sort { |a, b| a.published_at <=> b.published_at }
+      releases.map do |rel|
+        {
+          name: rel.name,
+          tag_name: rel.tag_name,
+          published_at: rel.published_at,
+          html_url: rel.html_url,
+          body: rel.body,
+          type: :release
         }
       end
     end
@@ -305,6 +321,13 @@ module MatrixReleasetracker::Backends
       yield
     ensure
       client.per_page = opp
+    end
+
+    def gql_available?
+      gql_client
+      true
+    rescue ArgumentError
+      false
     end
 
     def gql_client
