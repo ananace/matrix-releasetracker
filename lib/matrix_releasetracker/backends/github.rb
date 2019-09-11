@@ -132,6 +132,22 @@ module MatrixReleasetracker::Backends
       return erepo[:latest] if (erepo[:next_check] || Time.new(0)) > Time.now
       logger.debug "Timeout (#{erepo[:next_check]}) reached on `latest_release`, refreshing data for repository #{repo}"
 
+      erepo[:last_check] = Time.now
+      erepo[:next_check] = Time.now + with_stagger(erepo[:latest] ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY)
+
+      allow = prepo.fetch(:allow, nil)
+      allow = [:lightweight_tag, :tag, :release] unless allow.is_a? Array
+
+      erepo[:latest] = find_releases(repo).select { |r| allow.include? r.type }.last
+    rescue Octokit::NotFound
+      nil
+    end
+
+    def find_releases(repo)
+      repo = repo.full_name unless repo.is_a? String
+      prepo = persistent_repo(repo)
+      erepo = ephemeral_repo(repo)
+
       graphql = <<~GQL
         query {
           repository(owner:"#{repo.split('/').first}", name:"#{repo.split('/').last}") {
@@ -170,12 +186,6 @@ module MatrixReleasetracker::Backends
         }
       GQL
 
-      allow = prepo.fetch(:allow, nil)
-      allow = [:lightweight_tag, :tag, :release] unless allow.is_a? Array
-
-      erepo[:last_check] = Time.now
-      erepo[:next_check] = Time.now + with_stagger(erepo[:latest] ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY)
-
       result = gql_client.post '/graphql', { query: graphql }.to_json
 
       releases = result.data.repository.releases.nodes.map do |release|
@@ -186,19 +196,21 @@ module MatrixReleasetracker::Backends
       result.data.repository.refs.nodes.each do |tag|
         next if releases.key? tag.name
 
-        url = "https://github.com/#{repo}/releases/tag/#{tag.name}"
         if tag.target.__typename == 'Commit'
           time = Time.parse(tag.target.pushedDate || tag.target.committedDate)
-          releases[tag.name] = InternalRelease.new(tag.name, tag.name, time, url, tag.target.message, :lightweight_tag)
+          type = :lightweight_tag
         else
-          releases[tag.name] = InternalRelease.new(tag.name, tag.name, tag.target.tagger.date, url, tag.target.message, :tag)
+          time = tag.target.tagger.date
+          type = :tag
         end
+
+        # TODO Check the GraphQL API more thoroughly, if this really can't be retrieved instead of calculated
+        url = "https://github.com/#{repo}/releases/tag/#{tag.name}"
+        releases[tag.name] = InternalRelease.new(tag.name, tag.name, time, url, tag.target.message, type)
       end
 
-      releases = releases.values.flatten.compact.select { |r| allow.include? r.type }
-
-      release = releases.sort { |a, b| a.date <=> b.date }.last
-      erepo[:latest] = [release].compact.map do |rel|
+      releases = releases.values.sort { |a, b| a.date <=> b.date }
+      releases.map do |rel|
         {
           name: rel.name,
           tag_name: rel.tag_name,
@@ -207,9 +219,7 @@ module MatrixReleasetracker::Backends
           body: rel.description,
           type: rel.type
         }
-      end.first
-    rescue Octokit::NotFound
-      nil
+      end
     end
 
     def last_releases(user = config[:user])
