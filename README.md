@@ -53,7 +53,7 @@ WantedBy=default.target
 - Properly handle releases on moving tags (e.g. neovim/neovim nightly)
 - Handle PGP signatures better, don't just print the signature
 
-- Use GraphQL for the GitHub queries? (Doesn't seem to be possible with OAuth apps at the moment)
+- ~~Use GraphQL for the GitHub queries?~~ (requires an access token / username + password, as it isn't possible with OAuth apps at the moment)
 
 ## Contributing
 
