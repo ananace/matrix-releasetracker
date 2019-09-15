@@ -67,6 +67,10 @@ module MatrixReleasetracker
       end
       trimmed_release_notes
     end
+
+    def abbrev_commit
+      commit_sha[0, 7] unless commit_sha.nil? || commit_sha.empty?
+    end
   end
 end
 
