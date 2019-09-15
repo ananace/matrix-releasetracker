@@ -32,7 +32,6 @@ module MatrixReleasetracker
         end
       end
 
-
       format = :markdown unless %i[plain markdown html].include? format
       result = case format
                   when :plain
