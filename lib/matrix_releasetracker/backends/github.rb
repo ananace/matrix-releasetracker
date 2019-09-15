@@ -12,7 +12,7 @@ module MatrixReleasetracker::Backends
     NIL_RELEASE_EXPIRY = 1 * 24 * 60 * 60
     REPODATA_EXPIRY = 2 * 24 * 60 * 60
 
-    InternalRelease = Struct.new(:tag_name, :name, :date, :url, :description, :type)
+    InternalRelease = Struct.new(:sha, :tag_name, :name, :date, :url, :description, :type)
 
     def post_load
       super
@@ -155,6 +155,11 @@ module MatrixReleasetracker::Backends
             releases(first: 5, orderBy: { field: CREATED_AT, direction: DESC }) {
               nodes {
                 tagName
+                tag {
+                  target {
+                    oid
+                  }
+                }
                 name
                 createdAt
                 url
@@ -168,6 +173,7 @@ module MatrixReleasetracker::Backends
                 name
                 target {
                   __typename
+                  oid
                   ... on Commit {
                     committedDate
                     pushedDate
@@ -190,7 +196,7 @@ module MatrixReleasetracker::Backends
 
       releases = result.data.repository.releases.nodes.map do |release|
         type = release.isPrerelease ? :prerelease : :release
-        InternalRelease.new(release.tagName, release.name, Time.parse(release.createdAt), release.url, release.description, type)
+        InternalRelease.new(release.tag.target.oid, release.tagName, release.name, Time.parse(release.createdAt), release.url, release.description, type)
       end.group_by(&:tag_name)
 
       result.data.repository.refs.nodes.each do |tag|
@@ -206,12 +212,13 @@ module MatrixReleasetracker::Backends
 
         # TODO Check the GraphQL API more thoroughly, if this really can't be retrieved instead of calculated
         url = "https://github.com/#{repo}/releases/tag/#{tag.name}"
-        releases[tag.name] = InternalRelease.new(tag.name, tag.name, time, url, tag.target.message, type)
+        releases[tag.name] = InternalRelease.new(tag.target.oid, tag.name, tag.name, time, url, tag.target.message, type)
       end
 
       releases = releases.values.sort { |a, b| a.date <=> b.date }
       releases.map do |rel|
         {
+          sha: rel.sha,
           name: rel.name,
           tag_name: rel.tag_name,
           published_at: rel.date,
@@ -254,6 +261,7 @@ module MatrixReleasetracker::Backends
               store.name = repo[:name]
               store.version = rel[:tag_name]
               store.version_name = rel[:name]
+              store.commit_sha = rel[:sha]
               store.publish_date = rel[:published_at]
               store.release_notes = rel[:body]
               store.repo_url = repo[:html_url]
