@@ -1,3 +1,7 @@
+module Digest
+  autoload :SHA2, 'digest'
+end
+
 module MatrixReleasetracker
   class Release
     attr_accessor :namespace, :name, :version, :commit_sha, :publish_date, :release_notes, :repo_url, :release_url, :avatar_url, :release_type
@@ -42,6 +46,10 @@ module MatrixReleasetracker
         avatar_url: avatar_url,
         release_type: release_type
       }.compact.to_json(*params)
+    end
+
+    def stable_hash
+      Digest::SHA2.hexdigest to_json
     end
 
     private
