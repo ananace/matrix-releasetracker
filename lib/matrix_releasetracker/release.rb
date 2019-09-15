@@ -16,11 +16,6 @@ module MatrixReleasetracker
       [namespace, name].compact.join ' / '
     end
 
-    def render(template)
-      erb = ERB.new template, 0, '-'
-      erb.result(binding)
-    end
-
     def to_s(format = :plain)
       format = :markdown unless %i[plain markdown html].include? format
       result = case format
@@ -34,6 +29,11 @@ module MatrixReleasetracker
     end
 
     private
+
+    def render(template)
+      erb = ERB.new template, 0, '-'
+      erb.result(binding)
+    end
 
     def release_note_overflow
       "   \n ..." if (release_notes || '').count("\n") > 10
