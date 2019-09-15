@@ -259,6 +259,7 @@ module MatrixReleasetracker::Backends
               store.repo_url = repo[:html_url]
               store.release_url = rel[:html_url]
               store.avatar_url = repo[:avatar_url] ? repo[:avatar_url] + '&s=32' : 'https://avatars1.githubusercontent.com/u/9919?s=32&v=4'
+              store.release_type = rel[:type]
             end
           end.first
         end
