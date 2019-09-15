@@ -28,6 +28,22 @@ module MatrixReleasetracker
                   end
     end
 
+    def to_json(*params)
+      {
+        name: name,
+        namespace: namespace,
+        version: version,
+        version_name: @version_name,
+        commit_sha: commit_sha,
+        publish_date: publish_date,
+        release_notes: release_notes,
+        repo_url: repo_url,
+        release_url: release_url,
+        avatar_url: avatar_url,
+        release_type: release_type
+      }.compact.to_json(*params)
+    end
+
     private
 
     def render(template)
