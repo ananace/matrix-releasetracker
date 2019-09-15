@@ -1,10 +1,15 @@
 module MatrixReleasetracker
   class Release
-    attr_accessor :namespace, :name, :version, :version_name, :publish_date, :release_notes, :repo_url, :release_url, :avatar_url, :release_type
+    attr_accessor :namespace, :name, :version, :publish_date, :release_notes, :repo_url, :release_url, :avatar_url, :release_type
+    attr_writer :version_name
 
     def initialize
       @plain_template = File.join File.expand_path('templates', __dir__), 'plain.erb'
       @markdown_template = File.join File.expand_path('templates', __dir__), 'markdown.erb'
+    end
+
+    def version_name
+      @version_name || name
     end
 
     def full_name
@@ -17,21 +22,6 @@ module MatrixReleasetracker
     end
 
     def to_s(format = :plain)
-      version_name ||= version
-      release_note_overflow = "   \n ..." if (release_notes || '').count("\n") > 10
-      publish_date_str = publish_date.strftime('%a, %b %e %Y') if publish_date
-
-      trimmed_release_notes = release_notes
-      unless release_notes.nil? || release_notes.empty?
-        if format == :plain
-          trimmed_release_notes = release_notes.split("\n")[0, 2].map(&:rstrip).join "\n"
-          trimmed_release_notes = release_notes_[0, 128] if release_notes_.length > 128
-        else
-          trimmed_release_notes = release_notes.split("\n")[0, 10].map(&:rstrip).join "\n"
-          trimmed_release_notes = release_notes_[0, 512] if release_notes_.length > 512
-        end
-      end
-
       format = :markdown unless %i[plain markdown html].include? format
       result = case format
                   when :plain
@@ -41,6 +31,25 @@ module MatrixReleasetracker
                   when :html
                     return Kramdown::Document.new(to_s(:markdown)).to_html_extended + '<br/>'
                   end
+    end
+
+    private
+
+    def release_note_overflow
+      "   \n ..." if (release_notes || '').count("\n") > 10
+    end
+
+    def publish_date_str
+      publish_date.strftime('%a, %b %e %Y') if publish_date
+    end
+
+    def trimmed_release_notes
+      trimmed_release_notes = release_notes
+      unless trimmed_release_notes.nil? || trimmed_release_notes.empty?
+        trimmed_release_notes = trimmed_release_notes.split("\n")[0, 10].map(&:rstrip).join "\n"
+        trimmed_release_notes = trimmed_release_notes[0, 512] if trimmed_release_notes.length > 512
+      end
+      trimmed_release_notes
     end
   end
 end
