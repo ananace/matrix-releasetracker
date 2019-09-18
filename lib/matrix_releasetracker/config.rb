@@ -30,6 +30,10 @@ module MatrixReleasetracker
         [type, MatrixReleasetracker::Backends.const_get(backend).new(config, @client)]
       end]
 
+      @database = [data.fetch(:database, {})].map do |config|
+
+      end.first
+
       @media = client.media
       @media ||= client.data.delete(:media) { nil }
       @media ||= data.fetch(:media)
@@ -52,6 +56,9 @@ module MatrixReleasetracker
             validate_certificate: client.api.validate_certificate,
             transaction_id: client.api.instance_variable_get(:@transaction_id),
             backoff_time: client.api.instance_variable_get(:@backoff_time)
+          },
+
+          database: {
           }
         )
       )
