@@ -82,7 +82,7 @@ module MatrixReleasetracker::Backends
       puser = persistent_user(user)
       euser = ephemeral_user(user)
 
-      next_check = puser[:next_check]
+      next_check = puser[:next_check] || Time.now
       next_check = Time.parse(next_check.to_s) unless next_check.is_a? Time
       return puser[:repos] if puser[:repos] && (next_check || Time.new(0)) > Time.now
       logger.debug "Timeout (#{puser[:next_check]}) reached on `stars`, refreshing data for user #{user}."

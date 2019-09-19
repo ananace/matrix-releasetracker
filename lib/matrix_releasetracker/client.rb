@@ -61,13 +61,7 @@ module MatrixReleasetracker
     end
 
     def reload!
-      if !@use_sync &&
-         (api.server_version.name != 'Synapse' ||
-          Gem::Version.new(api.server_version.version) >= Gem::Version.new('0.34.1'))
-        reload_with_get
-      else
-        reload_with_sync
-      end
+      reload_with_get
 
       decompress_media
       @media = @data.delete(:media) if @data.key? :media
