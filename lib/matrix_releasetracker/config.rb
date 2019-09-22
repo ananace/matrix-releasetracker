@@ -31,7 +31,7 @@ module MatrixReleasetracker
       end]
 
       @database = [data.fetch(:database, {})].map do |config|
-
+        Sequel.connect(config[:connection_string])
       end.first
 
       @media = client.media
@@ -58,7 +58,8 @@ module MatrixReleasetracker
             backoff_time: client.api.instance_variable_get(:@backoff_time)
           },
 
-          database: {
+          database: @database.nil? ? {} : {
+            connection_string: @database.url
           }
         )
       )
