@@ -13,15 +13,11 @@ Example config:
 ```yaml
 ---
 :backends:
-- :access_token: 0000000000000000000000000000000000000000
+- :access_token: 0000000000000000000000000000000000000000 # GitHub access token
+  # also acceptable are a :login, :password combination - or :client_id, :client_secret for OAuth without GraphQL support
   :type: github
-  :users:
-  - :name: ananace
-    :room: '!exampleroomid:kittenface.studio'
-  - :name: github
-    :room: '!exampleroomid:matrix.org'
 :client:
-  :hs_url: https://kittenface.studio
+  :hs_url: https://matrix.org
   :access_token: <token>
 ```
 
@@ -34,7 +30,7 @@ Description=Release tracker for Matrix
 
 [Service]
 Type=simple
-WorkingDirectory=/home/ace/Projects/ruby-matrix-releasetracker
+WorkingDirectory=/opt/matrix-releasetracker
 ExecStart=/bin/bash -lc 'bundle exec bin/tracker'
 Restart=on-failure
 
