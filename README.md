@@ -8,6 +8,8 @@ For more information, questions, or just the use of the hosted version, you can 
 
 The `bin/tracker` binary will track and post updates on new GitHub releases, it requires a `releasetracker.yml` configuration file that it can read and write to.
 
+Once installed and started, all that's necessary to - currently - run the bot is to open a conversation with it and type `!github <username>`
+
 Example config:
 
 ```yaml
