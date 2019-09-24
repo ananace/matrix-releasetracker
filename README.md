@@ -15,7 +15,7 @@ Example config:
 ```yaml
 ---
 :backends:
-- :access_token: 0000000000000000000000000000000000000000 # GitHub access token
+- :access_token: 0000000000000000000000000000000000000000 # GitHub access token - needs the public_repo scope
   # also acceptable are a :login, :password combination - or :client_id, :client_secret for OAuth without GraphQL support
   # It's also possible to skip the authentication entirely, to run with heavily reduced limits
   :type: github
