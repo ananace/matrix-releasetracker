@@ -34,9 +34,11 @@ module MatrixReleasetracker
         Sequel.connect(config[:connection_string])
       end.first || Sequel.connect('sqlite://')
 
-      @database.create_table?(:media_mapping) do
+      @database.create_table?(:media) do
         string :original_url, uniqu: true, index: true
         string :mxc_url
+        string :etags, null: true
+        string :sha256, null: true
         dattime :timestamp
       end
 
@@ -61,8 +63,10 @@ module MatrixReleasetracker
       @media ||= data.fetch(:media)
 
       (@media || {}).each do |orig, mxc|
-        @database[:media_mapping].insert(original_url: orig, mxc_url: mxc, timestamp: Time.now)
+        @database[:media].insert(original_url: orig, mxc_url: mxc, timestamp: Time.now)
       end
+
+      @media = @database[:media]
 
       true
     end
