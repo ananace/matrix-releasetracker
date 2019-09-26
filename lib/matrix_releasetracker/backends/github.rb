@@ -17,6 +17,21 @@ module MatrixReleasetracker::Backends
     def post_load
       super
 
+      db = config.database
+
+      db.create_table?(:github_users) do
+        string :name, unique: true, index: true
+        datetime :next_check
+      end
+
+      db.create_table?(:github_repos) do
+        string :full_name, unique: true, index: true
+        string :name
+        string :html_url
+        string :avatar_url
+        datetime :next_data_sync
+      end
+
       return unless config.key? :tracked
 
       # Clean up old configuration junk

@@ -14,6 +14,11 @@ module MatrixReleasetracker
       @config = config
       @m_client = client
 
+      db = config.database
+
+      db.create_table?() do
+      end
+
       post_load
     end
 

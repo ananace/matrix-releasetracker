@@ -20,6 +20,16 @@ module MatrixReleasetracker
       [namespace, name].compact.join ' / '
     end
 
+    def mxc_avatar_url
+      
+    end
+
+    def with_mxc_url
+      return dup.tap do |r|
+        r.avatar_url = mxc_avatar_url
+      end
+    end
+
     def to_s(format = :plain)
       format = :markdown unless %i[plain markdown html].include? format
       result = case format

@@ -9,7 +9,7 @@ module MatrixReleasetracker
     end
 
     attr_accessor :filename
-    attr_reader :backends, :client, :media
+    attr_reader :backends, :client, :media, :database
 
     def load!
       raise 'Config file is missing' unless File.exist? filename
@@ -32,11 +32,37 @@ module MatrixReleasetracker
 
       @database = [data.fetch(:database, {})].map do |config|
         Sequel.connect(config[:connection_string])
-      end.first
+      end.first || Sequel.connect('sqlite://')
+
+      @database.create_table?(:media_mapping) do
+        string :original_url, uniqu: true, index: true
+        string :mxc_url
+        dattime :timestamp
+      end
+
+      @database.create_table?(:releases) do
+        # shared index?
+        string :namespace 
+        string :version
+
+        string :name
+        string :version_name
+        string :commit_sha
+        datetime :publish_date
+        string :release_notes
+        string :repo_url
+        string :release_url
+        string :avatar_url
+        string :release_type
+      end
 
       @media = client.media
       @media ||= client.data.delete(:media) { nil }
       @media ||= data.fetch(:media)
+
+      (@media || {}).each do |orig, mxc|
+        @database[:media_mapping].insert(original_url: orig, mxc_url: mxc, timestamp: Time.now)
+      end
 
       true
     end
