@@ -16,9 +16,6 @@ module MatrixReleasetracker
 
       db = config.database
 
-      db.create_table?() do
-      end
-
       post_load
     end
 
