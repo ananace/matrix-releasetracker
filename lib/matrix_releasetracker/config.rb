@@ -32,10 +32,17 @@ module MatrixReleasetracker
 
       @database = [data.fetch(:database, {})].map do |config|
         Sequel.connect(config[:connection_string])
-      end.first || Sequel.connect('sqlite://')
+      end.first || Sequel.connect('sqlite://database.db')
+
+      @database.create_table?(:meta) do
+        string :key, primary_key: true
+        string :value
+      end
+
+      @database[:meta]
 
       @database.create_table?(:media) do
-        string :original_url, uniqu: true, index: true
+        string :original_url, primary_key: true
         string :mxc_url
         string :etags, null: true
         string :sha256, null: true
@@ -43,9 +50,9 @@ module MatrixReleasetracker
       end
 
       @database.create_table?(:releases) do
-        # shared index?
         string :namespace 
         string :version
+        primary_key %i[namespace version]
 
         string :name
         string :version_name
