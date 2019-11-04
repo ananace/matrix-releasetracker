@@ -38,10 +38,18 @@ ROOM_STATE_FILTER = {
 }.freeze
 
 def fix_media_url(url, config)
-  config.media[url] ||= begin
-    data = Net::HTTP.get_response(URI(url))
+    stored = config.media.where original_url: url
+    if stored.any?
+      return stored.first[:mxc_url] # if Time.now - data.timestamp < 48 * 60 * 60
 
-    config.client.api.media_upload(data.body, data.content_type)[:content_uri] if data.is_a? Net::HTTPOK
+      # Re-query image, check etags/last-modified/sha256
+    end
+
+    data = Net::HTTP.get_response(URI(url))
+    mxc_url = config.client.api.media_upload(data.body, data.content_type)[:content_uri] if data.is_a? Net::HTTPOK
+    stored.insert(original_url: url, mxc_url: mxc_url) if mxc_url
+
+    mxc_url
   end
 end
 

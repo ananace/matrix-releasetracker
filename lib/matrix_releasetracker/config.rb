@@ -30,47 +30,16 @@ module MatrixReleasetracker
         [type, MatrixReleasetracker::Backends.const_get(backend).new(config, @client)]
       end]
 
-      @database = [data.fetch(:database, {})].map do |config|
-        Sequel.connect(config[:connection_string])
-      end.first || Sequel.connect('sqlite://database.db')
-
-      @database.create_table?(:meta) do
-        string :key, primary_key: true
-        string :value
-      end
-
-      @database[:meta]
-
-      @database.create_table?(:media) do
-        string :original_url, primary_key: true
-        string :mxc_url
-        string :etags, null: true
-        string :sha256, null: true
-        dattime :timestamp
-      end
-
-      @database.create_table?(:releases) do
-        string :namespace 
-        string :version
-        primary_key %i[namespace version]
-
-        string :name
-        string :version_name
-        string :commit_sha
-        datetime :publish_date
-        string :release_notes
-        string :repo_url
-        string :release_url
-        string :avatar_url
-        string :release_type
-      end
+      @database = Database.new([data.fetch(:database, {})].map do |config|
+        config[:connection_string]
+      end.first || 'sqlite://database.db')
 
       @media = client.media
       @media ||= client.data.delete(:media) { nil }
       @media ||= data.fetch(:media)
 
       (@media || {}).each do |orig, mxc|
-        @database[:media].insert(original_url: orig, mxc_url: mxc, timestamp: Time.now)
+        @database[:media].insert(original_url: orig, mxc_url: mxc)
       end
 
       @media = @database[:media]
