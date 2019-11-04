@@ -40,7 +40,12 @@ ROOM_STATE_FILTER = {
 def fix_media_url(url, config)
     stored = config.media.where original_url: url
     if stored.any?
-      return stored.first[:mxc_url] # if Time.now - data.timestamp < 48 * 60 * 60
+      current_url = stored.first
+      return current_url[:mxc_url] # if Time.now - data.timestamp < 48 * 60 * 60
+
+      headers = {}
+      headers['If-Modified-Since'] = current_url[:last_modified] if current_url[:last_modified]
+      headers['If-None-Match'] = current_url[:etags] if current_url[:etags]
 
       # Re-query image, check etags/last-modified/sha256
     end
