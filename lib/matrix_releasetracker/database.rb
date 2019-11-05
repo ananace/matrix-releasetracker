@@ -32,8 +32,8 @@ module MatrixReleasetracker
           string :original_url, null: false, primary_key: true
           string :mxc_url, null: false
 
-          string :etags, null: true, default: nil
-          datetime :last_modified, null: true, default: nil
+          string :etag, null: true, default: nil
+          string :last_modified, null: true, default: nil
           string :sha256, null: true, default: nil
 
           datetime :timestamp, null: false, default: Sequel::CURRENT_TIMESTAMP

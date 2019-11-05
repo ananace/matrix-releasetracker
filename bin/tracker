@@ -38,24 +38,54 @@ ROOM_STATE_FILTER = {
 }.freeze
 
 def fix_media_url(url, config)
-    stored = config.media.where original_url: url
-    if stored.any?
-      current_url = stored.first
-      return current_url[:mxc_url] # if Time.now - data.timestamp < 48 * 60 * 60
+  result = nil
+  stored = config.media.where original_url: url
 
-      headers = {}
-      headers['If-Modified-Since'] = current_url[:last_modified] if current_url[:last_modified]
-      headers['If-None-Match'] = current_url[:etags] if current_url[:etags]
+  if stored.any?
+    current_url = stored.first
+    return current_url[:mxc_url] if Time.now - current_url[:timestamp] < 48 * 60 * 60
 
-      # Re-query image, check etags/last-modified/sha256
+    stored.update timestamp: Time.now
+
+    uri = URI(url)
+    query = Net::HTTP::Get.new uri
+    query['If-Modified-Since'] = current_url[:last_modified] if current_url[:last_modified]
+    query['If-None-Match'] = current_url[:etag] if current_url[:etag]
+
+    result = Net::HTTP.start(uri.host, uri.port, use_ssl: url.scheme == 'https') do |http|
+      http.request query
     end
 
-    data = Net::HTTP.get_response(URI(url))
-    mxc_url = config.client.api.media_upload(data.body, data.content_type)[:content_uri] if data.is_a? Net::HTTPOK
-    stored.insert(original_url: url, mxc_url: mxc_url) if mxc_url
+    return current_url[:mxc_url] if result.is_a? Net::HTTPNotModified
+    return current_url[:mxc_url] unless result.is_a? Net::HTTPSuccess
 
-    mxc_url
+    to_update = {
+      etag: result['etag'] != current_url[:etag] ? result['etag'] : nil,
+      last_modified: result['last-modified'] != current_url[:last_modified] ? result['last-modified'] : nil
+    }.compact
+    stored.update(to_update) if to_update.any?
+
+    return current_url[:mxc_url] if current_url[:sha256] && Digest::SHA256.hexdigest(result.body) == current_url[:sha256]
+  else
+    result = Net::HTTP.get_response(URI(url))
+    result.value
   end
+
+  mxc_url = config.client.api.media_upload(result.body, result.content_type)[:content_uri]
+  raise 'Failed to upload image' unless mxc_url
+
+  if stored.any?
+    stored.update mxc_url: mxc_url
+  else
+    extradata = {
+      etag: result['etag'],
+      last_modified: result['last-modified'],
+      sha256: Digest::SHA256.hexdigest(result.body) 
+    }.compact
+    stored.insert(original_url: url, mxc_url: mxc_url, **extradata)
+  end
+
+  mxc_url
 end
 
 def run!
