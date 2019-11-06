@@ -34,6 +34,7 @@ module MatrixReleasetracker
         config[:connection_string]
       end.first || 'sqlite://database.db')
 
+      # Migrate existing media into DB
       @media = client.media
       @media ||= client.data.delete(:media) { nil }
       @media ||= data.fetch(:media)
