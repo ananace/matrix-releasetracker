@@ -82,7 +82,7 @@ def fix_media_url(url, config)
       last_modified: result['last-modified'],
       sha256: Digest::SHA256.hexdigest(result.body) 
     }.compact
-    stored.insert(original_url: url, mxc_url: mxc_url, **extradata)
+    config.media.insert(original_url: url, mxc_url: mxc_url, **extradata)
   end
 
   mxc_url
