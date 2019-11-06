@@ -43,10 +43,33 @@ module MatrixReleasetracker
     end
 
     def users
-      @users ||= m_client.users.tap do |arr|
+      return @users if @users
+
+      legacy_users ||= m_client.users.tap do |arr|
         arr.concat(config[:users].each { |u| u[:backend] = name.downcase }) unless config[:users].empty?
         config[:users].clear
       end.select { |u| u[:backend] == name.downcase }
+      tracking = config.database[:tracking].where(backend: 'github')
+
+      if legacy_users.any?
+        legacy_users.each do |u|
+          tracking.insert object: u.name,
+                          backend: u.backend,
+                          room_id: u.room,
+                          type: 'user',
+                          last_update: u.last_check
+        end
+        m_client.users.clear
+      end
+      
+      @users = tracking.where(type: 'user').map do |t|
+        Structs::User.new t[:object], t[:room_id], t[:backend], t[:last_update], t[:extradata]
+      end
+      # @repos = tracking.where(type: 'repo').map do |t|
+      #   Structs::Repo.new t[:object], t[:room_id], t[:backend], t[:last_update], t[:extradata]
+      # end
+
+      @users
     end
 
     def last_releases(_user)
@@ -79,7 +102,14 @@ module MatrixReleasetracker
     end
 
     def persistent_user(username)
-      m_client.room_data(users.find { |u| u.name == username }[:room])
+      user = users.find { |u| u.name == username }
+      legacy = m_client.room_data(user.room)
+      if legacy
+        user.extradata.merge! legacy
+        m_client.clear_room_data user.room
+      end
+
+      return user.extradata if user
     end
 
     def ephemeral_users

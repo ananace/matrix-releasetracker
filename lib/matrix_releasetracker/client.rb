@@ -52,6 +52,10 @@ module MatrixReleasetracker
       data[:users]
     end
 
+    def clear_room_data(room_id)
+      # TODO
+    end
+
     def room_data(room_id)
       @room_data[room_id] ||= api.get_room_account_data(@user.user_id, room_id, ACCOUNT_DATA_KEY)
     rescue MatrixSdk::MatrixRequestError => e
@@ -67,7 +71,7 @@ module MatrixReleasetracker
       @media = @data.delete(:media) if @data.key? :media
 
       @data[:users] = (@data[:users] || []).map do |u|
-        Structs::User.new u[:name], u[:room], u[:backend], last_check: u.dig(:persistent_data, :last_check)
+        Structs::User.new u[:name], u[:room], u[:backend], u.dig(:persistent_data, :last_check)
       end
 
       @room_data.each_key do |room_id|

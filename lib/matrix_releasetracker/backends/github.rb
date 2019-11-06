@@ -19,11 +19,6 @@ module MatrixReleasetracker::Backends
 
       db = config.database
 
-      db.create_table?(:github_users) do
-        string :name, primary_key: true
-        datetime :next_check
-      end
-
       db.create_table?(:github_repos) do
         string :full_name, primary_key: true
         string :name

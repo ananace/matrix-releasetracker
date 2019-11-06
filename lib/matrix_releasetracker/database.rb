@@ -54,6 +54,17 @@ module MatrixReleasetracker
           string :avatar_url, null: false
           string :release_type, null: false
         end
+
+        adapter.create_table?(:tracking) do
+          string :object, null: false
+          string :backend, null: false
+          string :type, null: false
+          primary_key %i[object backend type], unique: true
+          string :room_id, null: false
+
+          string :extradata, null: true, default: nil
+          datetime :last_update, null: true, default: nil
+        end
       end
 
       adapter[:meta].replace 'migration', MIGRATE_VERSION
