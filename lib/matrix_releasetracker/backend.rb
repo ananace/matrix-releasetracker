@@ -103,8 +103,9 @@ module MatrixReleasetracker
 
     def persistent_user(username)
       user = users.find { |u| u.name == username }
+
       legacy = m_client.room_data(user.room)
-      if legacy
+      if legacy.any?
         user.extradata.merge! legacy
         m_client.clear_room_data user.room
       end
