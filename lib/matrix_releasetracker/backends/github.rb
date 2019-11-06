@@ -61,7 +61,7 @@ module MatrixReleasetracker::Backends
     def rate_limit
       limit = client.rate_limit
 
-      RateLimit.new(self, limit.limit, limit.remaining, limit.resets_at, limit.resets_in)
+      RateLimit.new(self, 'REST', limit.limit, limit.remaining, limit.resets_at, limit.resets_in)
     end
 
     def rate_limits
