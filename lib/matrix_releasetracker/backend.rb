@@ -136,7 +136,7 @@ module MatrixReleasetracker
         end
         ret ||= Dir.tmpdir
 
-        File.join(ret, 'matrix-releasetracker') # Return tmpdir if everything fails
+        File.join(ret, 'matrix-releasetracker')
       end
     end
   end
