@@ -20,11 +20,11 @@ module MatrixReleasetracker::Backends
       db = config.database
 
       db.create_table?(:github_repos) do
-        string :full_name, primary_key: true
+        string :full_name, null: false, primary_key: true
         string :name
         string :html_url
         string :avatar_url
-        datetime :next_data_sync
+        datetime :next_data_sync, null: false, default: Sequel::CURRENT_TIMESTAMP
       end
 
       return unless config.key? :tracked
