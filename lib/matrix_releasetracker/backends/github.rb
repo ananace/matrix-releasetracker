@@ -11,6 +11,7 @@ module MatrixReleasetracker::Backends
     TAGS_RELEASE_EXPIRY = 2 * 60 * 60
     NIL_RELEASE_EXPIRY = 1 * 24 * 60 * 60
     REPODATA_EXPIRY = 2 * 24 * 60 * 60
+    GH_MIGRATE_VERSION = 1
 
     InternalRelease = Struct.new(:sha, :tag_name, :name, :date, :url, :description, :type)
 
@@ -19,13 +20,19 @@ module MatrixReleasetracker::Backends
 
       db = config.database
 
-      db.create_table?(:github_repos) do
-        string :full_name, null: false, primary_key: true
-        string :name
-        string :html_url
-        string :avatar_url
-        datetime :next_data_sync, null: false, default: Sequel::CURRENT_TIMESTAMP
+      gh_migration = ((db[:meta].where(key: 'gh_migration').first || {})[:value] || '0').to_i
+
+      if gh_migration < 1
+        db.create_table?(:github_repos) do
+          string :full_name, null: false, primary_key: true
+          string :name, null: false
+          string :html_url, null: false
+          string :avatar_url, null: true
+          datetime :next_data_sync, null: false, default: Sequel::CURRENT_TIMESTAMP
+        end
       end
+
+      db[:meta].replace 'gh_migration', GH_MIGRATE_VERSION
 
       return unless config.key? :tracked
 
