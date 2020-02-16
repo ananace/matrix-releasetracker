@@ -367,9 +367,9 @@ module MatrixReleasetracker::Backends
     end
 
     def client
-      @client ||= use_stack(if config.key?(:client_id) && config.key?(:client_secret)
-                              Octokit::Client.new client_id: config[:client_id], client_secret: config[:client_secret]
-                            elsif config.key?(:access_token)
+      @client ||= use_stack(#if config.key?(:client_id) && config.key?(:client_secret)
+                            #  Octokit::Client.new client_id: config[:client_id], client_secret: config[:client_secret]
+                            if config.key?(:access_token)
                               Octokit::Client.new access_token: config[:access_token]
                             elsif config.key?(:login) && config.key?(:password)
                               Octokit::Client.new login: config[:login], password: config[:password]
