@@ -65,6 +65,14 @@ module MatrixReleasetracker
           string :extradata, null: true, default: nil
           datetime :last_update, null: true, default: nil
         end
+
+        db.adapter.create_table?(:namespace) do
+          string :full_name, null: false, primary_key: true
+          string :name, null: false
+          string :html_url, null: false
+          string :avatar_url, null: true
+          datetime :next_data_sync, null: false, default: Sequel::CURRENT_TIMESTAMP
+        end
       end
 
       adapter[:meta].replace 'migration', MIGRATE_VERSION

@@ -24,12 +24,10 @@ module MatrixReleasetracker::Backends
       gh_migration = ((db[:meta].where(key: 'gh_migration').first || {})[:value] || '0').to_i
 
       if gh_migration < 1
-        db.adapter.create_table?(:github_repos) do
-          string :full_name, null: false, primary_key: true
-          string :name, null: false
-          string :html_url, null: false
-          string :avatar_url, null: true
-          datetime :next_data_sync, null: false, default: Sequel::CURRENT_TIMESTAMP
+        persistent_repos.each do |name, prepo|
+          erepo = ephemeral_repos[name] || {}
+
+          db[:namespace].replace name, name, erepo[:html_url], erepo[:avatar_url], erepo[:next_data_sync]
         end
       end
 
