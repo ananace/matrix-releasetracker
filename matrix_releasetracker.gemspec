@@ -21,7 +21,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'kramdown'
   spec.add_dependency 'logging', '~> 2'
   spec.add_dependency 'matrix_sdk', '~> 2'
-  spec.add_dependency 'octokit', '~> 4.0'
+  spec.add_dependency 'octokit', '~> 4.16'
   # TODO: Gem groups
   spec.add_dependency 'sequel'
   spec.add_dependency 'sqlite3'
