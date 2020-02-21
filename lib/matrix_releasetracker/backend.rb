@@ -80,15 +80,15 @@ module MatrixReleasetracker
 
     attr_reader :config, :m_client
 
-    def persistent_repos
+    def old_persistent_repos
       (config[:tracked] ||= {})[:repos] ||= {}
     end
 
     def persistent_repo(reponame)
-      persistent_repos[reponame] ||= {}
+      config.database[:repository][reponame] ||= {}
     end
 
-    def ephemeral_repos
+    def old_ephemeral_repos
       @ephemeral_repos ||= begin
         file = File.join(ephemeral_storage, 'ephemeral_repos.yml')
         ret = Psych.load(File.read(file)) if File.exist? file
@@ -98,7 +98,7 @@ module MatrixReleasetracker
     end
 
     def ephemeral_repo(reponame)
-      ephemeral_repos[reponame] ||= {}
+      old_ephemeral_repos[reponame] ||= {}
     end
 
     def persistent_user(username)

@@ -66,7 +66,7 @@ module MatrixReleasetracker
           datetime :last_update, null: true, default: nil
         end
 
-        db.adapter.create_table?(:namespace) do
+        db.adapter.create_table?(:repository) do
           string :full_name, null: false, primary_key: true
           string :name, null: false
           string :html_url, null: false
