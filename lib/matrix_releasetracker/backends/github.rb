@@ -27,7 +27,7 @@ module MatrixReleasetracker::Backends
         persistent_repos.each do |name, prepo|
           erepo = ephemeral_repos[name] || {}
 
-          db[:namespace].replace name, name, erepo[:html_url], erepo[:avatar_url], erepo[:next_data_sync]
+          db[:repository].insert_conflict(:update).insert name, name, erepo[:html_url], erepo[:avatar_url], erepo[:next_data_sync]
         end
       end
 

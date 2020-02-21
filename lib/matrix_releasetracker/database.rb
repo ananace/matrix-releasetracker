@@ -75,7 +75,7 @@ module MatrixReleasetracker
         end
       end
 
-      adapter[:meta].replace 'migration', MIGRATE_VERSION
+      adapter[:meta].insert_conflict(:update).insert 'migration', MIGRATE_VERSION
     end
   end
 end
