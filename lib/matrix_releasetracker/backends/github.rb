@@ -24,11 +24,7 @@ module MatrixReleasetracker::Backends
       gh_migration = ((db[:meta].where(key: 'gh_migration').first || {})[:value] || '0').to_i
 
       if gh_migration < 1
-        old_persistent_repos.each do |name, prepo|
-          erepo = old_ephemeral_repos[name] || {}
-
-          db[:repository].insert_conflict(:update).insert name, name, erepo[:html_url], erepo[:avatar_url], erepo[:next_data_sync]
-        end
+        require 'backends/github/migration_v1'
       end
 
       db[:meta].replace 'gh_migration', GH_MIGRATE_VERSION

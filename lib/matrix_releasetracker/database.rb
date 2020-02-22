@@ -42,11 +42,12 @@ module MatrixReleasetracker
         adapter.create_table?(:releases) do
           string :namespace, null: false
           string :version, null: false
-          primary_key %i[namespace version], unique: true
+          string :backend, null: false
+          primary_key %i[namespace version backend], unique: true
 
+          string :reponame, null: true, default: nil
           string :name, null: false
-          string :version_name, null: false
-          string :commit_sha, null: false
+          string :commit_sha, null: true, default: nil
           datetime :publish_date, null: false
           string :release_notes, null: false
           string :repo_url, null: false
@@ -60,18 +61,11 @@ module MatrixReleasetracker
           string :backend, null: false
           string :type, null: false
           primary_key %i[object backend type], unique: true
-          string :room_id, null: false
+          string :room_id, null: true, default: nil
 
           string :extradata, null: true, default: nil
-          datetime :last_update, null: true, default: nil
-        end
-
-        db.adapter.create_table?(:repository) do
-          string :full_name, null: false, primary_key: true
-          string :name, null: false
-          string :html_url, null: false
-          string :avatar_url, null: true
-          datetime :next_data_sync, null: false, default: Sequel::CURRENT_TIMESTAMP
+          datetime :last_update, null: false, default: Sequel::CURRENT_TIMESTAMP
+          datetime :next_update, null: true, default: nil
         end
       end
 
