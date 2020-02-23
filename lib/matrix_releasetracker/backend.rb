@@ -49,22 +49,26 @@ module MatrixReleasetracker
         arr.concat(config[:users].each { |u| u[:backend] = name.downcase }) unless config[:users].empty?
         config[:users].clear
       end.select { |u| u[:backend] == name.downcase }
-      tracking = config.database[:tracking].where(backend: 'github')
+      tracking = config.database[:tracking].where(backend: :github)
 
       if legacy_users.any?
         legacy_users.each do |u|
-          tracking.insert object: u.name,
-                          backend: u.backend,
-                          room_id: u.room,
-                          type: 'user',
-                          last_update: u.last_check
+          tracking.insert_conflict(:update).insert(
+            object: u.name,
+            backend: u.backend,
+            type: :user,
+
+            room_id: u.room,
+            last_update: u.last_check
+          )
         end
         m_client.users.clear
       end
       
-      @users = tracking.where(type: 'user').map do |t|
+      @users = tracking.where(type: :user).map do |t|
         Structs::User.new t[:object], t[:room_id], t[:backend], t[:last_update], t[:extradata]
       end
+
       # @repos = tracking.where(type: 'repo').map do |t|
       #   Structs::Repo.new t[:object], t[:room_id], t[:backend], t[:last_update], t[:extradata]
       # end
@@ -113,7 +117,7 @@ module MatrixReleasetracker
       return user.extradata if user
     end
 
-    def ephemeral_users
+    def old_ephemeral_users
       @ephemeral_users ||= begin
         file = File.join(ephemeral_storage, 'ephemeral_users.yml')
         ret = Psych.load(File.read(file)) if File.exist? file
@@ -123,7 +127,7 @@ module MatrixReleasetracker
     end
 
     def ephemeral_user(username)
-      ephemeral_users[username] ||= {}
+      old_ephemeral_users[username] ||= {}
     end
 
     def ephemeral_storage
