@@ -93,25 +93,21 @@ module MatrixReleasetracker::Backends
     end
 
     def refresh_repo(repo, data = {})
-      if repo.is_a? String
-        prepo = persistent_repo(repo)
-        erepo = ephemeral_repo(repo)
-        repo = client.repository(repo, data)
-      end
+      repo = client.repository(repo, data) if repo.is_a? String
 
       logger.debug "Forced refresh of stored data for repository #{repo.full_name}"
 
-      prepo ||= persistent_repo(repo.full_name)
-      erepo ||= ephemeral_repo(repo.full_name)
+      database[:tracking].insert_conflict(:update).insert(
+        object: repo.full_name,
+        backend: :github,
+        type: :repository,
 
-      erepo.merge!(
-        avatar_url: repo.owner.avatar_url,
-        full_name: repo.full_name,
-        name: repo.name,
-        html_url: repo.html_url
-      )
-      erepo.merge!(
-        next_data_sync: Time.now + with_stagger(REPODATA_EXPIRY)
+        extradata: {
+          name: repo.name,
+          url: repo.html_url,
+          avatar: repo.avatar_url
+        },
+        next_update: Time.now + with_stagger(REPODATA_EXPIRY)
       )
 
       true
