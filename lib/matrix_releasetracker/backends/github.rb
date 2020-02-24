@@ -315,7 +315,7 @@ module MatrixReleasetracker::Backends
       repo_information.sort_by! { |r| r[:last_check] || Time.new(0) }
 
       ret = if thread_count > 1
-              per_batch = user_stars.count / thread_count
+              per_batch = (user_stars.count / thread_count).to_i
               per_batch = user_stars.count if per_batch.zero?
               threads = []
               user_stars.each_slice(per_batch) do |stars|
