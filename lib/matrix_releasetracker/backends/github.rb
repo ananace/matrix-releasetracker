@@ -66,6 +66,7 @@ module MatrixReleasetracker::Backends
 
     def all_stars(data = {})
       raise NotImplementedException
+
       users.each do |u|
         stars(u, data).each do |repo|
           # refresh_repo(repo)
@@ -102,12 +103,12 @@ module MatrixReleasetracker::Backends
         backend: :github,
         type: :repository,
 
-        extradata: {
-          name: repo.name,
-          url: repo.html_url,
-          avatar: repo.avatar_url
-        },
-        next_update: Time.now + with_stagger(REPODATA_EXPIRY)
+        name: repo.name,
+        url: repo.html_url,
+        avatar: repo.avatar_url,
+        avatar: repo.avatar_url ? "#{repo.avatar_url}&s=32" : 'https://avatars1.githubusercontent.com/u/9919?s=32&v=4',
+        last_metadata_update: Time.now,
+        next_metadata_update: Time.now + with_stagger(REPODATA_EXPIRY)
       )
 
       true
@@ -115,33 +116,63 @@ module MatrixReleasetracker::Backends
 
     def latest_release(repo, data = {})
       repo = repo.full_name unless repo.is_a? String
-      prepo = persistent_repo(repo)
-      erepo = ephemeral_repo(repo)
 
       logger.debug "Checking latest release for #{repo}"
 
-      refresh_repo(repo, data) unless (erepo.keys & %i[full_name name html_url]).count == 3
-      refresh_repo(repo, data) if (erepo[:next_data_sync] ||= Time.now) < Time.now
+      db = database[:tracking][object: repo, backend: :github, type: :repository]
+      if db.empty? || (db.first[:next_metadata_update] || Time.now) < Time.now
+        refresh_repo(repo, data)
+        db = database[:tracking][object: repo, backend: :github, type: :repository]
 
-      return erepo[:latest] if (erepo[:next_check] || Time.new(0)) > Time.now
+        raise 'Failed to find repo data' if db.empty?
+      end
+
+      if (erepo[:next_update] || Time.new(0)) > Time.now
+        latest = database[:releases][namespace: repo, backend: :github].order_by(:publish_date, :desc).first
+        return latest.first if latest.any?
+      end
+
       logger.debug "Timeout (#{erepo[:next_check]}) reached on `latest_release`, refreshing data for repository #{repo}"
 
-      erepo[:last_check] = Time.now
-      erepo[:next_check] = Time.now + with_stagger(erepo[:latest] ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY)
+      db.update(
+        object: repo,
+        backend: :github,
+        type: :repository,
 
-      allow = prepo.fetch(:allow, nil)
+        last_update: Time.now,
+        next_update:Time.now + with_stagger(erepo[:latest] ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY)
+      )
+
+      allow = JSON.parse(db.first[:extradata] || '{}').fetch('allow', nil)
       allow = [:lightweight_tag, :tag, :release] unless allow.is_a? Array
 
       if gql_available?
-        erepo[:latest] = find_gql_releases(repo, prepo, erepo).select { |r| allow.include? r.type }.last
+        latest = find_gql_releases(repo).select { |r| allow.include? r.type }.last
       elsif allow.include? :release
-        erepo[:latest] = find_rest_releases(repo, prepo, erepo).last
+        latest = find_rest_releases(repo).last
       end
+
+      if latest
+        database[:releases].insert_conflict(:update).insert(
+          namespace: repo,
+          version: latest[:tag_name],
+          backend: :github,
+
+          name: latest[:name],
+          commit_sha: latest[:sha],
+          publish_date: latest[:published_at],
+          release_notes: latest[:body],
+          url: latest[:html_url],
+          type: latest[:type]
+        )
+      end
+
+      database[:releases][namespace: repo, backend: :github].order_by(:publish_date, :desc).first
     rescue Octokit::NotFound
       nil
     end
 
-    def find_gql_releases(repo, prepo, ereop)
+    def find_gql_releases(repo)
       graphql = <<~GQL
         query {
           repository(owner:"#{repo.split('/').first}", name:"#{repo.split('/').last}") {
@@ -223,7 +254,7 @@ module MatrixReleasetracker::Backends
       end
     end
 
-    def find_rest_releases(repo, prepo, erepo)
+    def find_rest_releases(repo)
       releases = per_page(5) { client.releases(repo) }.reject { |r| r.published_at.nil? }
 
       releases.sort { |a, b| a.published_at <=> b.published_at }

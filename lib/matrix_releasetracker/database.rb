@@ -45,15 +45,15 @@ module MatrixReleasetracker
           string :backend, null: false
           primary_key %i[namespace version backend], unique: true
 
-          string :reponame, null: true, default: nil
           string :name, null: false
           string :commit_sha, null: true, default: nil
           datetime :publish_date, null: false
           string :release_notes, null: false
-          string :repo_url, null: false
-          string :release_url, null: false
-          string :avatar_url, null: false
-          string :release_type, null: false
+          string :url, null: false
+          string :type, null: false
+
+          # JSON
+          string :extradata, null: true, default: nil
         end
 
         adapter.create_table?(:tracking) do
@@ -63,7 +63,15 @@ module MatrixReleasetracker
           primary_key %i[object backend type], unique: true
           string :room_id, null: true, default: nil
 
+          string :name, null: true, default: nil
+          string :url, null: true, default: nil
+          string :avatar, null: true, default: nil
+
+          # JSON
           string :extradata, null: true, default: nil
+
+          datetime :last_metadata_update, null: false, default: Sequel::CURRENT_TIMESTAMP
+          datetime :next_metadata_update, null: true, default: nil
           datetime :last_update, null: false, default: Sequel::CURRENT_TIMESTAMP
           datetime :next_update, null: true, default: nil
         end
