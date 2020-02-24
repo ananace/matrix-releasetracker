@@ -84,6 +84,10 @@ module MatrixReleasetracker
 
     attr_reader :config, :m_client
 
+    def database
+      config.database
+    end
+
     def old_persistent_repos
       (config[:tracked] ||= {})[:repos] ||= {}
     end
