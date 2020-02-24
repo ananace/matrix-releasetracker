@@ -28,20 +28,6 @@ module MatrixReleasetracker::Backends
       end
 
       db[:meta].replace 'gh_migration', GH_MIGRATE_VERSION
-
-      return unless config.key? :tracked
-
-      # Clean up old configuration junk
-      config[:tracked][:users].each { |_k, u| %i[last_check next_check].each { |v| u.delete v } }
-      config[:tracked][:users].delete_if { |_k, u| u.empty? }
-      config[:tracked].delete :users if config[:tracked][:users].empty?
-
-      config[:tracked][:repos].each { |_k, r| %i[latest next_data_sync next_check full_name name html_url avatar_url].each { |v| r.delete v } }
-      config[:tracked][:repos].each { |_k, r| r.delete :allow if r[:allow].is_a? Symbol }
-      config[:tracked][:repos].delete_if { |_k, r| r.empty? }
-      config[:tracked].delete :repos if config[:tracked][:repos].empty?
-
-      config.delete :tracked if config[:tracked].empty?
     end
 
     def post_update
