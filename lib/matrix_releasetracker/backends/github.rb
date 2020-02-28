@@ -78,25 +78,35 @@ module MatrixReleasetracker::Backends
 
     def stars(user, data = {})
       user = user.name unless user.is_a? String
-      puser = persistent_user(user)
-      euser = ephemeral_user(user)
 
-      next_check = puser[:next_check] || Time.now
-      next_check = Time.parse(next_check.to_s) unless next_check.is_a? Time
-      return puser[:repos] if puser[:repos] && (next_check || Time.new(0)) > Time.now
-      logger.debug "Timeout (#{puser[:next_check]}) reached on `stars`, refreshing data for user #{user}."
+      db = database[:tracking][object: user, backend: :github, type: :user]
+      refresh_user if db.empty? || (db.first[:next_metadata_update] || Time.new(0)) < Time.now
+      if db.empty? || (db.first[:next_update] || Time.new(0)) < Time.now
+        logger.debug "Timeout reached on `stars`, refreshing data for user #{user}."
+        tracked = paginate { client.starred(user, data) }
 
-      tracked = paginate { client.starred(user, data) }
-      puser[:repos] = tracked.map(&:full_name)
-      puser[:next_check] = Time.now + with_stagger(STAR_EXPIRY)
+        db.insert_conflict(:update).insert(
+          object: user,
+          backend: :gitlab,
+          type: :user,
 
-      puser[:repos]
+          extradata: {
+            repos: tracked.map(&:full_name)
+          }.to_json,
+          last_update: Time.now,
+          next_update: Time.now + with_stagger(STAR_EXPIRY)
+        )
+
+        return tracked.map(&:full_name)
+      end
+
+      JSON.parse(db.first[:extradata])['repos']
     end
 
     def refresh_repo(repo, data = {})
       repo = client.repository(repo, data) if repo.is_a? String
 
-      logger.debug "Forced refresh of stored data for repository #{repo.full_name}"
+      logger.debug "Refreshing metadata for repository #{repo.full_name}"
 
       database[:tracking].insert_conflict(:update).insert(
         object: repo.full_name,
@@ -110,6 +120,12 @@ module MatrixReleasetracker::Backends
         last_metadata_update: Time.now,
         next_metadata_update: Time.now + with_stagger(REPODATA_EXPIRY)
       )
+
+      true
+    end
+
+    def refresh_user(user)
+      logger.debug "Refreshing metadata for user #{user}"
 
       true
     end
@@ -240,8 +256,9 @@ module MatrixReleasetracker::Backends
         releases[tag.name] = InternalRelease.new(tag.target.oid, tag.name, tag.name, time, url, tag.target.message, type)
       end
 
-      releases = releases.values.sort { |a, b| a.date <=> b.date }
-      releases.map do |rel|
+      releases.values
+              .sort { |a, b| a.date <=> b.date }
+              .map do |rel|
         {
           sha: rel.sha,
           name: rel.name,
@@ -258,7 +275,7 @@ module MatrixReleasetracker::Backends
       releases = per_page(5) { client.releases(repo) }.reject { |r| r.published_at.nil? }
 
       releases.sort { |a, b| a.published_at <=> b.published_at }
-      releases.map do |rel|
+              .map do |rel|
         {
           name: rel.name,
           tag_name: rel.tag_name,
@@ -279,7 +296,7 @@ module MatrixReleasetracker::Backends
           latest = latest_release(star, data)
           next if latest.nil?
 
-          repo = ephemeral_repo(star)
+          repo = database[:tracking][object: star, backend: :github, type: :repository].first
           ret[star] = [latest].compact.map do |rel|
             MatrixReleasetracker::Release.new.tap do |store|
               store.namespace = repo[:full_name].split('/')[0..-2].join '/'
@@ -289,9 +306,9 @@ module MatrixReleasetracker::Backends
               store.commit_sha = rel[:sha]
               store.publish_date = rel[:published_at]
               store.release_notes = rel[:body]
-              store.repo_url = repo[:html_url]
+              store.repo_url = repo[:url]
               store.release_url = rel[:html_url]
-              store.avatar_url = repo[:avatar_url] ? repo[:avatar_url] + '&s=32' : 'https://avatars1.githubusercontent.com/u/9919?s=32&v=4'
+              store.avatar_url = repo[:avatar] ? repo[:avatar] + '&s=32' : 'https://avatars1.githubusercontent.com/u/9919?s=32&v=4'
               store.release_type = rel[:type]
             end
           end.first
@@ -303,13 +320,15 @@ module MatrixReleasetracker::Backends
       thread_count = config[:threads] || 1
       user_stars = stars(user)
       repo_information = user_stars.map do |repo|
-        erepo = ephemeral_repo(repo)
+        prepo = database[:tracking][object: repo, backend: :github, type: :repository].first
+        any_releases = database[:releases][namespace: repo, backend: :github].any?
+
         {
           repo: repo,
-          last_check: erepo[:last_check],
-          next_check: erepo[:next_check],
-          has_release: !erepo[:latest].nil?,
-          uses_tags: erepo[:allow] == :tags
+          last_check: prepo[:last_update],
+          next_check: prepo[:next_update],
+          has_release: any_releases,
+          uses_tags: true # erepo[:allow] == :tags
         }
       end
       repo_information.sort_by! { |r| r[:last_check] || Time.new(0) }
