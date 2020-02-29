@@ -42,6 +42,10 @@ module MatrixReleasetracker
       self.class.name.split(':').last
     end
 
+    def db_type
+      name.downcase.to_sym
+    end
+
     def users
       return @users if @users
 

@@ -41,6 +41,10 @@ module MatrixReleasetracker::Backends
       'GitHub'
     end
 
+    def db_type
+      :github
+    end
+
     def rate_limit
       limit = client.rate_limit
 
