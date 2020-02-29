@@ -83,7 +83,7 @@ module MatrixReleasetracker::Backends
     def stars(user, data = {})
       user = user.name unless user.is_a? String
 
-      db = database[:tracking][object: user, backend: :github, type: :user]
+      db = find_tracking(user, type: :user)
       refresh_user if db.empty? || (db.first[:next_metadata_update] || Time.new(0)) < Time.now
       if db.empty? || (db.first[:next_update] || Time.new(0)) < Time.now
         logger.debug "Timeout reached on `stars`, refreshing data for user #{user}."
@@ -139,10 +139,10 @@ module MatrixReleasetracker::Backends
 
       logger.debug "Checking latest release for #{repo}"
 
-      db = database[:tracking][object: repo, backend: :github, type: :repository]
+      db = find_tracking(repo, type: :repository)
       if db.empty? || (db.first[:next_metadata_update] || Time.now) < Time.now
         refresh_repo(repo, data)
-        db = database[:tracking][object: repo, backend: :github, type: :repository]
+        db = find_tracking(repo, type: :repository)
 
         raise 'Failed to find repo data' if db.empty?
       end
@@ -300,7 +300,7 @@ module MatrixReleasetracker::Backends
           latest = latest_release(star, data)
           next if latest.nil?
 
-          repo = database[:tracking][object: star, backend: :github, type: :repository].first
+          repo = find_tracking(star, type: :repository)
           ret[star] = [latest].compact.map do |rel|
             MatrixReleasetracker::Release.new.tap do |store|
               store.namespace = repo[:full_name].split('/')[0..-2].join '/'
@@ -324,7 +324,7 @@ module MatrixReleasetracker::Backends
       thread_count = config[:threads] || 1
       user_stars = stars(user)
       repo_information = user_stars.map do |repo|
-        prepo = database[:tracking][object: repo, backend: :github, type: :repository].first
+        prepo = find_tracking(repo, type: :repository)
         any_releases = database[:releases][namespace: repo, backend: :github].any?
 
         {
