@@ -148,7 +148,7 @@ module MatrixReleasetracker::Backends
       end
 
       if (erepo[:next_update] || Time.new(0)) > Time.now
-        latest = database[:releases][namespace: repo, backend: :github].order_by(:publish_date, :desc).first
+        latest = find_releases(namespace: repo).order_by(:publish_date, :desc).first
         return latest.first if latest.any?
       end
 
@@ -187,7 +187,7 @@ module MatrixReleasetracker::Backends
         )
       end
 
-      database[:releases][namespace: repo, backend: :github].order_by(:publish_date, :desc).first
+      find_releases(namespace: repo).order_by(:publish_date, :desc).first
     rescue Octokit::NotFound
       nil
     end
@@ -325,7 +325,7 @@ module MatrixReleasetracker::Backends
       user_stars = stars(user)
       repo_information = user_stars.map do |repo|
         prepo = find_tracking(repo, type: :repository)
-        any_releases = database[:releases][namespace: repo, backend: :github].any?
+        any_releases = find_releases(namespace: repo).any?
 
         {
           repo: repo,

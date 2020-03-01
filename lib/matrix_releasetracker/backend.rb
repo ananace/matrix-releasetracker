@@ -96,6 +96,10 @@ module MatrixReleasetracker
       database[:tracking][object: name, backend: db_type, type: type]
     end
 
+    def find_releases(**filters)
+      database[:releases][filters.merge(backend: db_type)]
+    end
+
     def old_persistent_repos
       (config[:tracked] ||= {})[:repos] ||= {}
     end
