@@ -92,8 +92,8 @@ module MatrixReleasetracker
       config.database
     end
 
-    def find_tracking(name, type:)
-      database[:tracking][object: name, backend: db_type, type: type]
+    def find_tracking(name, **filters)
+      database[:tracking][filters.merge(object: name, backend: db_type)]
     end
 
     def find_releases(**filters)
