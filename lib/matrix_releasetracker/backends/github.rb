@@ -291,7 +291,12 @@ module MatrixReleasetracker::Backends
       end
     end
 
-    def last_releases(user = config[:user])
+    def last_releases(tracked = config[:user])
+      # TODO: Support the other tracking types
+      last_user_releases(tracked)
+    end
+
+    def last_user_releases(user = config[:user])
       update_data = lambda do |stars|
         data = { headers: {} }
         ret = {}
