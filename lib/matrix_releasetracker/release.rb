@@ -10,9 +10,11 @@ module MatrixReleasetracker
       format = :markdown unless %i[plain markdown html].include? format
       formatstr = case format
                   when :plain
-                    "%{full_name} published %{version} on %{publish_date} (%{release_url})#{"\n%{release_notes}" unless release_notes.nil? || release_notes.empty?}"
+                    rel_note_clean = "\n%{release_notes}" if release_notes
+                    "%{full_name} published %{version} on %{publish_date} (%{release_url})#{rel_note_clean}"
                   when :markdown
-                    "#### [#{"![avatar](#{avatar_url}) " unless avatar_url.nil? || avatar_url.empty?}%{full_name}](%{repo_url}) [%{version}](%{release_url})\n[%{version_name} published %{publish_date}](%{release_url})#{"\n\n---\n%{release_notes}%{release_note_overflow}" unless release_notes.nil? || release_notes.empty?}"
+                    rel_note_clean = "\n\n---\n%{release_notes}%{release_note_overflow}" if release_notes
+                    "#### [#{"![avatar](#{avatar_url}) " unless avatar_url.nil? || avatar_url.empty?}%{full_name}](%{repo_url}) [%{version}](%{release_url})\n[%{version_name} published %{publish_date}](%{release_url})#{rel_note_clean}"
                   when :html
                     return Kramdown::Document.new(to_s(:markdown)).to_html_extended + '<br/>'
                   end

@@ -41,7 +41,17 @@ def fix_media_url(url, config)
   config.media[url] ||= begin
     data = Net::HTTP.get_response(URI(url))
 
-    config.client.api.media_upload(data.body, data.content_type)[:content_uri] if data.is_a? Net::HTTPOK
+    if data.is_a?(Net::HTTPOK)
+      data.value
+      result = config.client.api.media_upload(data.body, data.content_type) if data.content_length > 0
+
+      result[:content_uri] if result
+    end
+  rescue StandardError => e
+    l = Logging.logger['MatrixReleasetracker']
+
+    l.error "#{e.class} occurred on fixing Media URL: #{e}"
+    nil
   end
 end
 
@@ -106,7 +116,7 @@ def run!
     api.sync(timeout: 5.0, set_presence: :offline, since: config.client.next_batch, filter: ROOM_STATE_FILTER.to_json).tap do |data|
       config.client.next_batch = data[:next_batch]
 
-      data[:rooms][:invite].each do |room_id, _invite|
+      data.dig(:rooms, :invite)&.each do |room_id, _invite|
         logger.info "  Invited to #{room_id}."
 
         next if config.backends.map { |_k, b| b.users.map { |u| u[:room] } }.flatten.uniq.count > 50
@@ -115,8 +125,8 @@ def run!
         api.join_room(room_id.to_s)
       end
 
-      data[:rooms][:join].each do |room_id, join|
-        join[:timeline][:events].select { |ev| ev[:type] == 'm.room.message' && ev[:content] && ev[:content][:msgtype] == 'm.text' }.each do |message|
+      data.dig(:rooms, :join)&.each do |room_id, join|
+        join.dig(:timeline, :events)&.select { |ev| ev[:type] == 'm.room.message' && ev[:content] && ev[:content][:msgtype] == 'm.text' }&.each do |message|
           logger.info "  #{message[:sender]} in #{room_id}: #{message[:content][:body]}"
 
           next unless message[:content][:body].start_with? '!github '
