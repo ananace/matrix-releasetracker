@@ -49,8 +49,6 @@ module MatrixReleasetracker::Backends
           # refresh_repo(repo)
         end
       end
-
-      # persistent_repos.values
     end
 
     def stars(user, data = {})
