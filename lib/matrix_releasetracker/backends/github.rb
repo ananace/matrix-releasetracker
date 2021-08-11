@@ -12,37 +12,10 @@ module MatrixReleasetracker::Backends
     NIL_RELEASE_EXPIRY = 1 * 24 * 60 * 60
     REPODATA_EXPIRY = 2 * 24 * 60 * 60
 
-    GH_MIGRATE_VERSION = 1
-
     InternalRelease = Struct.new(:sha, :tag_name, :name, :date, :url, :description, :type)
-
-    def post_load
-      super
-
-      db = config.database
-
-      gh_migration = ((db[:meta].where(key: 'gh_migration').first || {})[:value] || '0').to_i
-
-      if gh_migration < 1
-        require 'backends/github/migration_v1'
-      end
-
-      db[:meta].replace 'gh_migration', GH_MIGRATE_VERSION
-    end
-
-    def post_update
-      super
-
-      # Remove empty repos from tracked config
-      config[:tracked].delete :repos if config[:tracked][:repos].empty?
-    end
 
     def name
       'GitHub'
-    end
-
-    def db_type
-      :github
     end
 
     def rate_limit
@@ -83,17 +56,15 @@ module MatrixReleasetracker::Backends
     def stars(user, data = {})
       user = user.name unless user.is_a? String
 
-      db = find_tracking(user, type: :user)
-      refresh_user if db.empty? || (db.first[:next_metadata_update] || Time.new(0)) < Time.now
-      if db.empty? || (db.first[:next_update] || Time.new(0)) < Time.now
+      db = find_tracking(user, type: 'user')
+      raise 'Unknown user' unless db
+
+      refresh_user(user) if db.empty? || (db.first[:next_metadata_update] || Time.new(0)) < Time.now
+      if (db.first[:next_update] || Time.new(0)) < Time.now
         logger.debug "Timeout reached on `stars`, refreshing data for user #{user}."
         tracked = paginate { client.starred(user, data) }
 
-        db.insert_conflict(:update).insert(
-          object: user,
-          backend: :gitlab,
-          type: :user,
-
+        db.update(
           extradata: {
             repos: tracked.map(&:full_name)
           }.to_json,
@@ -112,15 +83,14 @@ module MatrixReleasetracker::Backends
 
       logger.debug "Refreshing metadata for repository #{repo.full_name}"
 
-      database[:tracking].insert_conflict(:update).insert(
+      database[:tracking].insert_conflict(:replace).insert(
         object: repo.full_name,
-        backend: :github,
-        type: :repository,
+        backend: db_type,
+        type: 'repository',
 
         name: repo.name,
         url: repo.html_url,
-        avatar: repo.avatar_url,
-        avatar: repo.avatar_url ? "#{repo.avatar_url}&s=32" : 'https://avatars1.githubusercontent.com/u/9919?s=32&v=4',
+        avatar: repo.avatar_url ? "#{repo.avatar_url}&s=32" : 'https://avatars1.githubusercontent.com/u/9919?s=32',
         last_metadata_update: Time.now,
         next_metadata_update: Time.now + with_stagger(REPODATA_EXPIRY)
       )
@@ -129,7 +99,7 @@ module MatrixReleasetracker::Backends
     end
 
     def refresh_user(user)
-      logger.debug "Refreshing metadata for user #{user}"
+      # logger.debug "Refreshing metadata for user #{user}"
 
       true
     end
@@ -139,55 +109,55 @@ module MatrixReleasetracker::Backends
 
       logger.debug "Checking latest release for #{repo}"
 
-      db = find_tracking(repo, type: :repository)
+      db = find_tracking(repo, type: 'repository')
       if db.empty? || (db.first[:next_metadata_update] || Time.now) < Time.now
         refresh_repo(repo, data)
-        db = find_tracking(repo, type: :repository)
+        db = find_tracking(repo, type: 'repository')
 
         raise 'Failed to find repo data' if db.empty?
       end
 
-      if (erepo[:next_update] || Time.new(0)) > Time.now
-        latest = find_releases(namespace: repo).order_by(:publish_date, :desc).first
-        return latest.first if latest.any?
+      if (db.first[:next_update] || Time.new(0)) > Time.now
+        latest = find_releases(namespace: repo).order_by(Sequel.desc(:publish_date))
+        return latest.first
       end
 
-      logger.debug "Timeout (#{erepo[:next_check]}) reached on `latest_release`, refreshing data for repository #{repo}"
+      logger.debug "Timeout (#{db.first[:next_update]}) reached on `latest_release`, refreshing data for repository #{repo}"
 
       db.update(
-        object: repo,
-        backend: :github,
-        type: :repository,
-
         last_update: Time.now,
-        next_update:Time.now + with_stagger(erepo[:latest] ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY)
+        next_update: Time.now + with_stagger(find_releases(namespace: repo).any? ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY)
       )
 
-      allow = JSON.parse(db.first[:extradata] || '{}').fetch('allow', nil)
-      allow = [:lightweight_tag, :tag, :release] unless allow.is_a? Array
+      extradata = JSON.parse(db.first[:extradata] || '{}')
+      allow = extradata.fetch('allow', nil)
+      unless allow
+        allow = [:lightweight_tag, :tag, :release]
+        extradata['allow'] = allow 
+      end
 
       if gql_available?
-        latest = find_gql_releases(repo).select { |r| allow.include? r.type }.last
+        latest = find_gql_releases(repo).select { |r| allow.include? r[:type] }.last
       elsif allow.include? :release
         latest = find_rest_releases(repo).last
       end
 
       if latest
-        database[:releases].insert_conflict(:update).insert(
+        database[:releases].insert_conflict(:replace).insert(
           namespace: repo,
           version: latest[:tag_name],
-          backend: :github,
+          backend: db_type,
 
-          name: latest[:name],
+          name: latest[:name] || latest[:tag_name] || latest[:sha],
           commit_sha: latest[:sha],
           publish_date: latest[:published_at],
-          release_notes: latest[:body],
+          release_notes: latest[:body] || '',
           url: latest[:html_url],
-          type: latest[:type]
+          type: latest[:type].to_s
         )
       end
 
-      find_releases(namespace: repo).order_by(:publish_date, :desc).first
+      find_releases(namespace: repo).order_by(Sequel.desc(:publish_date)).first
     rescue Octokit::NotFound
       nil
     end
@@ -241,7 +211,7 @@ module MatrixReleasetracker::Backends
 
       releases = result.data.repository.releases.nodes.map do |release|
         type = release.isPrerelease ? :prerelease : :release
-        InternalRelease.new(release.tag.target.oid, release.tagName, release.name, Time.parse(release.createdAt), release.url, release.description, type)
+        InternalRelease.new(release.tag&.target&.oid, release.tagName, release.name, Time.parse(release.createdAt), release.url, release.description, type)
       end.group_by(&:tag_name)
 
       result.data.repository.refs.nodes.each do |tag|
@@ -257,10 +227,11 @@ module MatrixReleasetracker::Backends
 
         # TODO Check the GraphQL API more thoroughly, if this really can't be retrieved instead of calculated
         url = "https://github.com/#{repo}/releases/tag/#{tag.name}"
-        releases[tag.name] = InternalRelease.new(tag.target.oid, tag.name, tag.name, time, url, tag.target.message, type)
+        releases[tag.name] = InternalRelease.new(tag.target&.oid, tag.name, tag.name, time, url, tag.target.message, type)
       end
 
       releases.values
+              .map { |v| v.is_a?(Array) ? v.first : v }
               .sort { |a, b| a.date <=> b.date }
               .map do |rel|
         {
@@ -270,7 +241,7 @@ module MatrixReleasetracker::Backends
           published_at: rel.date,
           html_url: rel.url,
           body: rel.description,
-          type: rel.type
+          type: rel.type.to_s.to_sym
         }
       end
     end
@@ -305,19 +276,20 @@ module MatrixReleasetracker::Backends
           latest = latest_release(star, data)
           next if latest.nil?
 
-          repo = find_tracking(star, type: :repository)
+          repo = find_tracking(star, type: 'repository').first
           ret[star] = [latest].compact.map do |rel|
             MatrixReleasetracker::Release.new.tap do |store|
-              store.namespace = repo[:full_name].split('/')[0..-2].join '/'
+              store.namespace = repo[:object].split('/')[0..-2].join '/'
               store.name = repo[:name]
-              store.version = rel[:tag_name]
-              store.version_name = rel[:name]
-              store.commit_sha = rel[:sha]
-              store.publish_date = rel[:published_at]
-              store.release_notes = rel[:body]
               store.repo_url = repo[:url]
-              store.release_url = rel[:html_url]
-              store.avatar_url = repo[:avatar] ? repo[:avatar] + '&s=32' : 'https://avatars1.githubusercontent.com/u/9919?s=32&v=4'
+              store.avatar_url = repo[:avatar] ? repo[:avatar] + '&s=32' : 'https://avatars1.githubusercontent.com/u/9919?s=32'
+
+              store.version = rel[:version]
+              store.version_name = rel[:name]
+              store.commit_sha = rel[:commit_sha]
+              store.publish_date = rel[:publish_date]
+              store.release_notes = rel[:release_notes]
+              store.release_url = rel[:url]
               store.release_type = rel[:type]
             end
           end.first
@@ -328,19 +300,28 @@ module MatrixReleasetracker::Backends
 
       thread_count = config[:threads] || 1
       user_stars = stars(user)
-      repo_information = user_stars.map do |repo|
-        prepo = find_tracking(repo, type: :repository)
-        any_releases = find_releases(namespace: repo).any?
+      # repo_information = user_stars.map do |repo|
+      #   prepo = find_tracking(repo, type: 'repository').first
+      #   if prepo.nil?
+      #     puts "Missing repo info for #{repo}"
+      #     {
+      #       repo: repo,
+      #       has_releases: false,
+      #       uses_tags: true # erepo[:allow] == :tags
+      #     }
+      #   end
 
-        {
-          repo: repo,
-          last_check: prepo[:last_update],
-          next_check: prepo[:next_update],
-          has_release: any_releases,
-          uses_tags: true # erepo[:allow] == :tags
-        }
-      end
-      repo_information.sort_by! { |r| r[:last_check] || Time.new(0) }
+      #   any_releases = find_releases(namespace: repo).any?
+
+      #   {
+      #     repo: repo,
+      #     last_check: prepo[:last_update],
+      #     next_check: prepo[:next_update],
+      #     has_release: any_releases,
+      #     uses_tags: true # erepo[:allow] == :tags
+      #   }
+      # end
+      # repo_information.sort_by! { |r| r[:last_check] || Time.new(0) }
 
       ret = if thread_count > 1
               per_batch = (user_stars.count / thread_count).to_i
@@ -356,16 +337,12 @@ module MatrixReleasetracker::Backends
             end
 
       ret[:last_check] = config[:last_check] if config.key? :last_check
-      config[:last_check] = Time.now
+      #config[:last_check] = Time.now
 
       ret
     end
 
     private
-
-    def with_stagger(value)
-      value + (Random.rand - 0.5) * (value / 2.0)
-    end
 
     def paginate(&_block)
       client.auto_paginate = true

@@ -149,7 +149,7 @@ def run!
     api.sync(timeout: 5.0, set_presence: :offline, since: config.client.next_batch, filter: ROOM_STATE_FILTER.to_json).tap do |data|
       config.client.next_batch = data[:next_batch]
 
-      data[:rooms][:invite].each do |room_id, _invite|
+      data.dig(:rooms, :invite)&.each do |room_id, _invite|
         logger.info "  Invited to #{room_id}."
 
         next if config.backends.map { |_k, b| b.users.map { |u| u[:room] } }.flatten.uniq.count > 50
@@ -158,30 +158,26 @@ def run!
         api.join_room(room_id.to_s)
       end
 
-      data[:rooms][:join].each do |room_id, join|
-        join[:timeline][:events].select { |ev| ev[:type] == 'm.room.message' && ev[:content] && ev[:content][:msgtype] == 'm.text' }.each do |message|
+      data.dig(:rooms, :join)&.each do |room_id, join|
+        join.dig(:timeline, :events)&.select { |ev| ev[:type] == 'm.room.message' && ev[:content] && ev[:content][:msgtype] == 'm.text' }.each do |message|
           logger.info "  #{message[:sender]} in #{room_id}: #{message[:content][:body]}"
 
           next unless message[:content][:body].start_with? '!github '
+          next unless config.backends.keys.include? :github
 
           users = api.get_room_members(room_id)[:chunk].select { |c| c[:content][:membership] == 'join' }
           next if users.count > 2
 
-          user = client.users.find { |u| u[:type] == :github && u[:room] == room_id }
+          backend = config.backends[:github]
+          user = backend.users.find { |u| u.room.to_s == room_id.to_s }
 
-          gh_name = message[:content][:body][8..-1]
-          next if user && user[:name] == gh_name
+          gh_name = message[:content][:body][8..-1].downcase
+          next if user && user.name == gh_name
 
           if user
-            user[:name] = gh_name.downcase
+            backend.update_user(user.name, object: gh_name)
           else
-            client.users << {
-              name: gh_name.downcase,
-              room: room_id.to_s,
-              type: :github,
-              last_check: Time.now
-            }
-            config.backends[:github].instance_variable_set :@users, nil
+            backend.add_user(gh_name, { room_id: room_id.to_s })
           end
 
           api.send_notice(room_id.to_s, "Now tracking GitHub user '#{gh_name}'")
@@ -192,8 +188,8 @@ def run!
     config.backends.each do |_k, b|
       logger.info "Polling backend #{b.name} with #{b.users.count} users..."
       b.users.each do |u|
-        repos = b.stars(u[:name])
-        releases = b.last_releases(u[:name])
+        repos = b.stars(u.name)
+        releases = b.last_releases(u.name)
         logger.info " Tracking #{repos.count} repositories - #{releases[:releases].count} with releases, for #{u[:name]}."
 
         selected_releases = releases[:releases].reject { |_k, v| v.nil? || v.publish_date < (u.last_check || Time.new(0)) }
@@ -209,11 +205,11 @@ def run!
             format: 'org.matrix.custom.html'
           )
         end
+        next unless selected_releases.any?
 
-        u.last_check = Time.now if selected_releases.any?
+        u.last_check = Time.now
+        u.save!
       end
-
-      b.post_update
     end
 
     config.save!

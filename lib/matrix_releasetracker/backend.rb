@@ -14,13 +14,7 @@ module MatrixReleasetracker
       @config = config
       @m_client = client
 
-      db = config.database
-
       post_load
-    end
-
-    def logger
-      Logging.logger[self]
     end
 
     def rate_limit; end
@@ -29,48 +23,16 @@ module MatrixReleasetracker
       [rate_limit].compact
     end
 
-    def post_load; end
-
-    def post_update
-      # Cache ephemeral data between starts
-      Dir.mkdir ephemeral_storage unless Dir.exist? ephemeral_storage
-      File.write(File.join(ephemeral_storage, 'ephemeral_repos.yml'), @ephemeral_repos.to_yaml)
-      File.write(File.join(ephemeral_storage, 'ephemeral_users.yml'), @ephemeral_users.to_yaml)
-    end
-
     def name
       self.class.name.split(':').last
-    end
-
-    def db_type
-      name.downcase.to_sym
     end
 
     def users
       return @users if @users
 
-      legacy_users ||= m_client.users.tap do |arr|
-        arr.concat(config[:users].each { |u| u[:backend] = name.downcase }) unless config[:users].empty?
-        config[:users].clear
-      end.select { |u| u[:backend] == name.downcase }
-      tracking = config.database[:tracking].where(backend: :github)
-
-      if legacy_users.any?
-        legacy_users.each do |u|
-          tracking.insert_conflict(:update).insert(
-            object: u.name,
-            backend: u.backend,
-            type: :user,
-
-            room_id: u.room,
-            last_update: u.last_check
-          )
-        end
-        m_client.users.clear
-      end
-      
-      @users = tracking.where(type: :user).map do |t|
-        Structs::User.new t[:object], t[:room_id], t[:backend], t[:last_update], t[:extradata]
+      tracking = database[:tracking]
+      @users = tracking.where(type: 'user', backend: db_type).map do |t|
+        Structs::User.new t[:object], t[:room_id], self, t[:last_update], t[:extradata]
       end
 
       # @repos = tracking.where(type: 'repo').map do |t|
@@ -78,6 +40,24 @@ module MatrixReleasetracker
       # end
 
       @users
+    end
+
+    def add_user(name, **data)
+      tracking = database[:tracking]
+      u = tracking.insert(type: 'user', backend: db_type, object: name, **data)
+      @users = tracking.where(type: 'user', backend: db_type).map do |t|
+        Structs::User.new t[:object], t[:room_id], self, t[:last_update], t[:extradata]
+      end
+      u
+    end
+
+    def update_user(name, **data)
+      tracking = database[:tracking]
+      u = tracking.where(type: 'user', backend: db_type, object: name).update(data)
+      @users = tracking.where(type: 'user', backend: db_type).map do |t|
+        Structs::User.new t[:object], t[:room_id], self, t[:last_update], t[:extradata]
+      end
+      u
     end
 
     def last_releases(_user)
@@ -89,26 +69,49 @@ module MatrixReleasetracker
     attr_reader :config, :m_client
 
     def database
-      config.database
+      config[:database]
+    end
+
+    def logger
+      Logging.logger[self]
+    end
+
+    def db_type
+      name.downcase
+    end
+
+    def post_load; end
+
+    # def post_update
+    #   # Cache ephemeral data between starts
+    #   Dir.mkdir ephemeral_storage unless Dir.exist? ephemeral_storage
+    #   File.write(File.join(ephemeral_storage, 'ephemeral_repos.yml'), @ephemeral_repos.to_yaml)
+    #   File.write(File.join(ephemeral_storage, 'ephemeral_users.yml'), @ephemeral_users.to_yaml)
+    # end
+
+    def with_stagger(value)
+      value + (Random.rand - 0.5) * (value / 2.0)
     end
 
     def find_tracking(name, **filters)
-      database[:tracking][filters.merge(object: name, backend: db_type)]
+      database[:tracking].where(filters.merge(object: name, backend: db_type))
     end
 
     def find_releases(**filters)
-      database[:releases][filters.merge(backend: db_type)]
+      database[:releases].where(filters.merge(backend: db_type))
     end
 
     def old_persistent_repos
+      puts "old_persistent_repos called by #{caller_locations(1,1)[0]}"
       (config[:tracked] ||= {})[:repos] ||= {}
     end
 
     def persistent_repo(reponame)
-      config.database[:repository][reponame] ||= {}
+      database[:repository][reponame] ||= {}
     end
 
     def old_ephemeral_repos
+      puts "old_ephemeral_repos called by #{caller_locations(1,1)[0]}"
       @ephemeral_repos ||= begin
         file = File.join(ephemeral_storage, 'ephemeral_repos.yml')
         ret = Psych.load(File.read(file)) if File.exist? file
@@ -123,17 +126,11 @@ module MatrixReleasetracker
 
     def persistent_user(username)
       user = users.find { |u| u.name == username }
-
-      legacy = m_client.room_data(user.room)
-      if legacy.any?
-        user.extradata.merge! legacy
-        m_client.clear_room_data user.room
-      end
-
-      return user.extradata if user
+      user&.extradata
     end
 
     def old_ephemeral_users
+      puts "old_ephemeral_users called by #{caller_locations(1,1)[0]}"
       @ephemeral_users ||= begin
         file = File.join(ephemeral_storage, 'ephemeral_users.yml')
         ret = Psych.load(File.read(file)) if File.exist? file

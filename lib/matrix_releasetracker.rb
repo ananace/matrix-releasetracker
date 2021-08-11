@@ -2,10 +2,9 @@ require 'matrix_releasetracker/version'
 require 'matrix_releasetracker/backend'
 require 'matrix_releasetracker/client'
 require 'matrix_releasetracker/config'
+require 'matrix_releasetracker/database'
 require 'matrix_releasetracker/release'
 require 'matrix_releasetracker/structs'
-
-autoload :Sequel, 'sequel'
 
 module MatrixReleasetracker
   module Backends

@@ -22,6 +22,9 @@ Example config:
 :client:
   :hs_url: https://matrix.org
   :access_token: <token>
+:database:
+  # Will default to a database.db in the working-directory if missing
+  #:connection_string: sqlite://database.db
 ```
 
 Example systemd unit:
@@ -43,7 +46,7 @@ WantedBy=default.target
 
 ## TODO
 
-- Store data in an actual database, not the config file
+- ~~Store data in an actual database, not the config file~~
 - ~~Track releases in separate data structures~~ - maybe partially on Matrix, map against update timestamps on each user
   - Allow requesting pre-release releases as well (Will require proper data storage)
   - Don't lose releases when multiple releases are done a short period
