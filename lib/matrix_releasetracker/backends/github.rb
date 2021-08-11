@@ -60,7 +60,7 @@ module MatrixReleasetracker::Backends
       raise 'Unknown user' unless db
 
       refresh_user(user) if db.empty? || (db.first[:next_metadata_update] || Time.new(0)) < Time.now
-      if (db.first[:next_update] || Time.new(0)) < Time.now
+      if db.first[:extradata].nil? || db.first[:extradata].empty? || db.first[:extradata] == '{}' || (db.first[:next_metadata_update] || Time.new(0)) < Time.now
         logger.debug "Timeout reached on `stars`, refreshing data for user #{user}."
         tracked = paginate { client.starred(user, data) }
 
@@ -68,9 +68,11 @@ module MatrixReleasetracker::Backends
           extradata: {
             repos: tracked.map(&:full_name)
           }.to_json,
-          last_update: Time.now,
-          next_update: Time.now + with_stagger(STAR_EXPIRY)
+          last_metadata_update: Time.now,
+          next_metadata_update: Time.now + with_stagger(STAR_EXPIRY)
         )
+        u = @users.find { |u| u.name == user }
+        u&.extradata = { 'repos' => tracked.map(&:full_name) }
 
         return tracked.map(&:full_name)
       end
@@ -81,19 +83,30 @@ module MatrixReleasetracker::Backends
     def refresh_repo(repo, data = {})
       repo = client.repository(repo, data) if repo.is_a? String
 
-      logger.debug "Refreshing metadata for repository #{repo.full_name}"
+      logger.debug "Refreshed metadata for repository #{repo.full_name}"
 
-      database[:tracking].insert_conflict(:replace).insert(
-        object: repo.full_name,
-        backend: db_type,
-        type: 'repository',
+      db = find_tracking(repo.full_name, type: 'repository')
+      if db.empty?
+        db.insert(
+          object: repo.full_name,
+          backend: db_type,
+          type: 'repository',
 
-        name: repo.name,
-        url: repo.html_url,
-        avatar: repo.avatar_url ? "#{repo.avatar_url}&s=32" : 'https://avatars1.githubusercontent.com/u/9919?s=32',
-        last_metadata_update: Time.now,
-        next_metadata_update: Time.now + with_stagger(REPODATA_EXPIRY)
-      )
+          name: repo.name,
+          url: repo.html_url,
+          avatar: repo.avatar_url || repo.owner.avatar_url,
+          last_metadata_update: Time.now,
+          next_metadata_update: Time.now + with_stagger(REPODATA_EXPIRY)
+        )
+      else
+        db.update(
+          name: repo.name,
+          url: repo.html_url,
+          avatar: repo.avatar_url || repo.owner.avatar_url,
+          last_metadata_update: Time.now,
+          next_metadata_update: Time.now + with_stagger(REPODATA_EXPIRY)
+        )
+      end
 
       true
     end
@@ -300,28 +313,6 @@ module MatrixReleasetracker::Backends
 
       thread_count = config[:threads] || 1
       user_stars = stars(user)
-      # repo_information = user_stars.map do |repo|
-      #   prepo = find_tracking(repo, type: 'repository').first
-      #   if prepo.nil?
-      #     puts "Missing repo info for #{repo}"
-      #     {
-      #       repo: repo,
-      #       has_releases: false,
-      #       uses_tags: true # erepo[:allow] == :tags
-      #     }
-      #   end
-
-      #   any_releases = find_releases(namespace: repo).any?
-
-      #   {
-      #     repo: repo,
-      #     last_check: prepo[:last_update],
-      #     next_check: prepo[:next_update],
-      #     has_release: any_releases,
-      #     uses_tags: true # erepo[:allow] == :tags
-      #   }
-      # end
-      # repo_information.sort_by! { |r| r[:last_check] || Time.new(0) }
 
       ret = if thread_count > 1
               per_batch = (user_stars.count / thread_count).to_i

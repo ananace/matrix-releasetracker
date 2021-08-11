@@ -52,8 +52,9 @@ module MatrixReleasetracker
     end
 
     def update_user(name, **data)
+      u = find_tracking(name, type: 'user').update(**data)
+
       tracking = database[:tracking]
-      u = tracking.where(type: 'user', backend: db_type, object: name).update(data)
       @users = tracking.where(type: 'user', backend: db_type).map do |t|
         Structs::User.new t[:object], t[:room_id], self, t[:last_update], t[:extradata]
       end

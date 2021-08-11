@@ -8,12 +8,6 @@ module MatrixReleasetracker
       def last_check=(check)
         last_update = check
       end
-
-      def save!
-        backend.update_user(name, {
-          last_update: last_update
-        }.merge(extradata || {}))
-      end
     end
   end
 end

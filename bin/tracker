@@ -207,8 +207,7 @@ def run!
         end
         next unless selected_releases.any?
 
-        u.last_check = Time.now
-        u.save!
+        b.update_user(u.name, last_update: Time.now)
       end
     end
 
