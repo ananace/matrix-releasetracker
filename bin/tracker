@@ -37,6 +37,7 @@ ROOM_STATE_FILTER = {
   }
 }.freeze
 
+logger = nil
 def fix_media_url(url, config)
   result = nil
   stored = config.media.where original_url: url
@@ -86,6 +87,9 @@ def fix_media_url(url, config)
   end
 
   mxc_url
+rescue StandardError => ex
+  logger.error "Failed to fix media url for #{url.inspect} - #{ex.class}: #{ex}"
+  nil
 end
 
 def run!
