@@ -37,201 +37,210 @@ ROOM_STATE_FILTER = {
   }
 }.freeze
 
-logger = nil
-def fix_media_url(url, config)
-  result = nil
-  stored = config.media.where original_url: url
+class ReleasetrackerRunner
+  attr_reader :logger, :config, :options
 
-  if stored.any?
-    current_url = stored.first
-    return current_url[:mxc_url] if Time.now - current_url[:timestamp] < 48 * 60 * 60
+  def run!
+    @options = {
+      config: 'releasetracker.yml',
+      loglevel: :info,
+      sdk_debug: false
+    }
 
-    stored.update timestamp: Time.now
+    opts_parser = OptionParser.new do |opts|
+      opts.banner = "Usage: #{File.basename($PROGRAM_NAME, File.extname($PROGRAM_NAME))} [ARGS...]"
 
-    uri = URI(url)
-    query = Net::HTTP::Get.new uri
-    query['If-Modified-Since'] = current_url[:last_modified] if current_url[:last_modified]
-    query['If-None-Match'] = current_url[:etag] if current_url[:etag]
-
-    result = Net::HTTP.start(uri.host, uri.port, use_ssl: url.scheme == 'https') do |http|
-      http.request query
-    end
-
-    return current_url[:mxc_url] if result.is_a? Net::HTTPNotModified
-    return current_url[:mxc_url] unless result.is_a? Net::HTTPSuccess
-
-    to_update = {
-      etag: result['etag'] != current_url[:etag] ? result['etag'] : nil,
-      last_modified: result['last-modified'] != current_url[:last_modified] ? result['last-modified'] : nil
-    }.compact
-    stored.update(to_update) if to_update.any?
-
-    return current_url[:mxc_url] if current_url[:sha256] && Digest::SHA256.hexdigest(result.body) == current_url[:sha256]
-  else
-    result = Net::HTTP.get_response(URI(url))
-    result.value
-  end
-
-  mxc_url = config.client.api.media_upload(result.body, result.content_type)[:content_uri]
-  raise 'Failed to upload image' unless mxc_url
-
-  if stored.any?
-    stored.update mxc_url: mxc_url
-  else
-    extradata = {
-      etag: result['etag'],
-      last_modified: result['last-modified'],
-      sha256: Digest::SHA256.hexdigest(result.body) 
-    }.compact
-    config.media.insert(original_url: url, mxc_url: mxc_url, **extradata)
-  end
-
-  mxc_url
-rescue StandardError => ex
-  logger.error "Failed to fix media url for #{url.inspect} - #{ex.class}: #{ex}"
-  nil
-end
-
-def run!
-  options = {
-    config: 'releasetracker.yml',
-    loglevel: :info,
-    sdk_debug: false
-  }
-
-  opts_parser = OptionParser.new do |opts|
-    opts.banner = "Usage: #{File.basename($PROGRAM_NAME, File.extname($PROGRAM_NAME))} [ARGS...]"
-
-    opts.on('-c', '--config CONFIG', 'specify the config file to use - defaults to "releasetracker.yml"') do |config|
-      options[:config] = config
-    end
-
-    opts.on('-d', 'debug the SDK calls') do
-      options[:sdk_debug] = true
-    end
-
-    opts.on('-v', '--verbose', 'use verbose output') do
-      options[:loglevel] = :debug
-    end
-
-    opts.on('-h', '--help', 'show this text') do
-      puts opts_parser
-      exit
-    end
-  end
-  opts_parser.parse!
-
-  MatrixSdk.debug! if options[:sdk_debug]
-  logger = Logging.logger['MatrixReleasetracker'].tap do |log|
-    log.add_appenders Logging.appenders.stderr(
-      layout: Logging::Layouts.pattern(pattern: "[%d|%.1l] %c: %m\n", date_pattern: '%F %T')
-    )
-    log.level = options[:loglevel]
-  end
-
-  config = MatrixReleasetracker::Config.load! options[:config]
-  logger.info 'Loaded configuration.'
-
-  api = config.client.api
-
-  logger.info 'Ensuring configured rooms are joined.'
-  config.backends.map { |_k, b| b.users.map { |u| u[:room] } }.flatten.uniq.each do |room|
-    api.join_room(room.to_s)
-
-    users = api.get_room_members(room)[:chunk].select { |c| c[:content][:membership] == 'join' }
-    next if users.count > 1
-
-    logger.info "Room #{room} is empty, leaving."
-    config.client.users.delete_if { |u| u[:room] == room }
-
-    api.leave_room(room)
-  end
-
-  logger.info "Starting tracker with #{config.backends.count} backends."
-  loop do
-    logger.info 'Checking Matrix client...'
-    api.sync(timeout: 5.0, set_presence: :offline, since: config.client.next_batch, filter: ROOM_STATE_FILTER.to_json).tap do |data|
-      config.client.next_batch = data[:next_batch]
-
-      data.dig(:rooms, :invite)&.each do |room_id, _invite|
-        logger.info "  Invited to #{room_id}."
-
-        next if config.backends.map { |_k, b| b.users.map { |u| u[:room] } }.flatten.uniq.count > 50
-
-        logger.info "  Joining #{room_id}."
-        api.join_room(room_id.to_s)
+      opts.on('-c', '--config CONFIG', 'specify the config file to use - defaults to "releasetracker.yml"') do |config|
+        options[:config] = config
       end
 
-      data.dig(:rooms, :join)&.each do |room_id, join|
-        join.dig(:timeline, :events)&.select { |ev| ev[:type] == 'm.room.message' && ev[:content] && ev[:content][:msgtype] == 'm.text' }.each do |message|
-          logger.info "  #{message[:sender]} in #{room_id}: #{message[:content][:body]}"
+      opts.on('-d', 'debug the SDK calls') do
+        options[:sdk_debug] = true
+      end
 
-          next unless message[:content][:body].start_with? '!github '
-          next unless config.backends.keys.include? :github
+      opts.on('-v', '--verbose', 'use verbose output') do
+        options[:loglevel] = :debug
+      end
 
-          users = api.get_room_members(room_id)[:chunk].select { |c| c[:content][:membership] == 'join' }
-          next if users.count > 2
+      opts.on('-h', '--help', 'show this text') do
+        puts opts_parser
+        exit
+      end
+    end
+    opts_parser.parse!
 
-          backend = config.backends[:github]
-          user = backend.users.find { |u| u.room.to_s == room_id.to_s }
+    MatrixSdk.debug! if options[:sdk_debug]
+    @logger = Logging.logger['MatrixReleasetracker'].tap do |log|
+      log.add_appenders Logging.appenders.stderr(
+        layout: Logging::Layouts.pattern(pattern: "[%d|%.1l] %c: %m\n", date_pattern: '%F %T')
+      )
+      log.level = options[:loglevel]
+    end
 
-          gh_name = message[:content][:body][8..-1].downcase
-          next if user && user.name == gh_name
+    @config = MatrixReleasetracker::Config.load! options[:config]
+    logger.info 'Loaded configuration.'
 
-          if user
-            backend.update_user(user.name, object: gh_name)
-          else
-            backend.add_user(gh_name, { room_id: room_id.to_s })
+    api = config.client.api
+
+    logger.info 'Ensuring configured rooms are joined.'
+    config.backends.map { |_k, b| b.users.map { |u| u[:room] } }.flatten.uniq.each do |room|
+      api.join_room(room.to_s)
+
+      users = api.get_room_members(room)[:chunk].select { |c| c[:content][:membership] == 'join' }
+      next if users.count > 1
+
+      logger.info "Room #{room} is empty, leaving."
+      config.client.users.delete_if { |u| u[:room] == room }
+
+      api.leave_room(room)
+    end
+
+    logger.info "Starting tracker with #{config.backends.count} backends."
+    loop do
+      logger.info 'Checking Matrix client...'
+      api.sync(timeout: 5.0, set_presence: :offline, since: config.client.next_batch, filter: ROOM_STATE_FILTER.to_json).tap do |data|
+        config.client.next_batch = data[:next_batch]
+
+        data.dig(:rooms, :invite)&.each do |room_id, _invite|
+          logger.info "  Invited to #{room_id}."
+
+          next if config.backends.map { |_k, b| b.users.map { |u| u[:room] } }.flatten.uniq.count > 50
+
+          logger.info "  Joining #{room_id}."
+          api.join_room(room_id.to_s)
+        end
+
+        data.dig(:rooms, :join)&.each do |room_id, join|
+          join.dig(:timeline, :events)&.select { |ev| ev[:type] == 'm.room.message' && ev[:content] && ev[:content][:msgtype] == 'm.text' }.each do |message|
+            logger.info "  #{message[:sender]} in #{room_id}: #{message[:content][:body]}"
+
+            next unless message[:content][:body].start_with? '!github '
+            next unless config.backends.keys.include? :github
+
+            users = api.get_room_members(room_id)[:chunk].select { |c| c[:content][:membership] == 'join' }
+            next if users.count > 2
+
+            backend = config.backends[:github]
+            user = backend.users.find { |u| u.room.to_s == room_id.to_s }
+
+            gh_name = message[:content][:body][8..-1].downcase
+            next if user && user.name == gh_name
+
+            if user
+              backend.update_user(user.name, object: gh_name)
+            else
+              backend.add_user(gh_name, { room_id: room_id.to_s })
+            end
+
+            api.send_notice(room_id.to_s, "Now tracking GitHub user '#{gh_name}'")
           end
-
-          api.send_notice(room_id.to_s, "Now tracking GitHub user '#{gh_name}'")
         end
       end
-    end
 
-    config.backends.each do |_k, b|
-      logger.info "Polling backend #{b.name} with #{b.users.count} users..."
-      b.users.each do |u|
-        repos = b.stars(u.name)
-        releases = b.last_releases(u.name)
-        logger.info " Tracking #{repos.count} repositories - #{releases[:releases].count} with releases, for #{u[:name]}."
+      config.backends.each do |_k, b|
+        logger.info "Polling backend #{b.name} with #{b.users.count} users..."
+        b.users.each do |u|
+          repos = b.stars(u.name)
+          releases = b.last_releases(u.name)
+          logger.info " Tracking #{repos.count} repositories - #{releases[:releases].count} with releases, for #{u[:name]}."
 
-        selected_releases = releases[:releases].reject { |_k, v| v.nil? || v.publish_date < (u.last_check || Time.new(0)) }
-        selected_releases.each do |_name, rel|
-          logger.info "   Posting notice about #{rel.full_name} #{rel.version}"
-          rel.avatar_url = fix_media_url(rel.avatar_url, config) if rel.avatar_url
-          api.send_message_event(
-            u[:room],
-            'm.room.message',
-            msgtype: 'm.notice',
-            body: rel.to_s(:markdown),
-            formatted_body: rel.to_s(:html),
-            format: 'org.matrix.custom.html'
-          )
+          selected_releases = releases[:releases].reject { |_k, v| v.nil? || v.publish_date < (u.last_check || Time.new(0)) }
+          selected_releases.each do |_name, rel|
+            logger.info "   Posting notice about #{rel.full_name} #{rel.version}"
+            rel.avatar_url = fix_media_url(rel.avatar_url) if rel.avatar_url
+            api.send_message_event(
+              u[:room],
+              'm.room.message',
+              msgtype: 'm.notice',
+              body: rel.to_s(:markdown),
+              formatted_body: rel.to_s(:html),
+              format: 'org.matrix.custom.html'
+            )
+          end
+          next unless selected_releases.any?
+
+          b.update_user(u.name, last_update: Time.now)
         end
-        next unless selected_releases.any?
+      end
 
-        b.update_user(u.name, last_update: Time.now)
+      config.save!
+      logger.info 'Finished polling, data saved.'
+
+      limits = config.backends.values.map(&:rate_limits).flatten.compact
+      limits.each do |l|
+        logger.info "Limit|#{l}"
+      end
+      limits = limits.select(&:near_limit)
+      if limits.any?
+        latest = limits.max(&:resets_in)
+
+        logger.info "Backend limits almost reached for #{latest.backend.name}, sleeping for at least #{latest.resets_in / 60.0} minutes"
+        sleep [latest.resets_in, 15 * 60].max
+      else
+        sleep 15 * 60
       end
     end
+  end
 
-    config.save!
-    logger.info 'Finished polling, data saved.'
+  private
 
-    limits = config.backends.values.map(&:rate_limits).flatten.compact
-    limits.each do |l|
-      logger.info "Limit|#{l}"
-    end
-    limits = limits.select(&:near_limit)
-    if limits.any?
-      latest = limits.max(&:resets_in)
+  def fix_media_url(url)
+    result = nil
+    stored = config.media.where original_url: url
 
-      logger.info "Backend limits almost reached for #{latest.backend.name}, sleeping for at least #{latest.resets_in / 60.0} minutes"
-      sleep [latest.resets_in, 15 * 60].max
+    if stored.any?
+      current_url = stored.first
+      return current_url[:mxc_url] if Time.now - current_url[:timestamp] < 48 * 60 * 60
+
+      stored.update timestamp: Time.now
+
+      uri = URI(url)
+      query = Net::HTTP::Get.new uri
+      query['If-Modified-Since'] = current_url[:last_modified] if current_url[:last_modified]
+      query['If-None-Match'] = current_url[:etag] if current_url[:etag]
+
+      result = Net::HTTP.start(uri.host, uri.port, use_ssl: url.scheme == 'https') do |http|
+        http.request query
+      end
+
+      return current_url[:mxc_url] if result.is_a? Net::HTTPNotModified
+      return current_url[:mxc_url] unless result.is_a? Net::HTTPSuccess
+
+      to_update = {
+        etag: result['etag'] != current_url[:etag] ? result['etag'] : nil,
+        last_modified: result['last-modified'] != current_url[:last_modified] ? result['last-modified'] : nil
+      }.compact
+      stored.update(to_update) if to_update.any?
+
+      return current_url[:mxc_url] if current_url[:sha256] && Digest::SHA256.hexdigest(result.body) == current_url[:sha256]
     else
-      sleep 15 * 60
+      result = Net::HTTP.get_response(URI(url))
+      result.value
     end
+
+    raise 'Retrieved empty response' if result.body.nil? || result.body.empty?
+
+    mxc_url = config.client.api.media_upload(result.body, result.content_type)[:content_uri]
+    raise 'Failed to upload image' unless mxc_url
+
+    if stored.any?
+      stored.update mxc_url: mxc_url
+    else
+      extradata = {
+        etag: result['etag'],
+        last_modified: result['last-modified'],
+        sha256: Digest::SHA256.hexdigest(result.body) 
+      }.compact
+      config.media.insert(original_url: url, mxc_url: mxc_url, **extradata)
+    end
+
+    mxc_url
+  rescue StandardError => ex
+    logger.error "Failed to fix media url for #{url.inspect} - #{ex.class}: #{ex}"
+    nil
   end
 end
 
-run! if $PROGRAM_NAME == __FILE__
+if $PROGRAM_NAME == __FILE__
+  ReleasetrackerRunner.new.run!
+end
