@@ -199,7 +199,7 @@ class ReleasetrackerRunner
       query['If-Modified-Since'] = current_url[:last_modified] if current_url[:last_modified]
       query['If-None-Match'] = current_url[:etag] if current_url[:etag]
 
-      result = Net::HTTP.start(uri.host, uri.port, use_ssl: url.scheme == 'https') do |http|
+      result = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https') do |http|
         http.request query
       end
 
