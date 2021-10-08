@@ -32,7 +32,7 @@ module MatrixReleasetracker
 
       tracking = database[:tracking]
       @users = tracking.where(type: 'user', backend: db_type).map do |t|
-        Structs::User.new t[:object], t[:room_id], self, t[:last_update], t[:extradata]
+        Structs::User.new t.as_hash.merge(backend: self)
       end
 
       # @repos = tracking.where(type: 'repo').map do |t|
@@ -46,7 +46,7 @@ module MatrixReleasetracker
       tracking = database[:tracking]
       u = tracking.insert(type: 'user', backend: db_type, object: name, **data)
       @users = tracking.where(type: 'user', backend: db_type).map do |t|
-        Structs::User.new t[:object], t[:room_id], self, t[:last_update], t[:extradata]
+        Structs::User.new t.as_hash.merge(backend: self)
       end
       u
     end
@@ -56,7 +56,7 @@ module MatrixReleasetracker
 
       tracking = database[:tracking]
       @users = tracking.where(type: 'user', backend: db_type).map do |t|
-        Structs::User.new t[:object], t[:room_id], self, t[:last_update], t[:extradata]
+        Structs::User.new t.as_hash.merge(backend: self)
       end
       u
     end

@@ -19,10 +19,10 @@ Sequel.migration do
     end
 
     create_table(:releases) do
-      string :namespace, null: false
+      primary_key :id
       string :version, null: false
-      string :backend, null: false
-      primary_key %i[namespace version backend], unique: true
+      foreign_key :repositories_id, :repositories, on_delete: :cascade, on_update: :cascade
+      index %i[version repositories_id], unique: true
 
       string :name, null: false
       string :commit_sha, null: true, default: nil
@@ -35,24 +35,53 @@ Sequel.migration do
       string :extradata, null: true, default: nil
     end
 
-    create_table(:tracking) do
-      string :object, null: false
+    create_table(:repositories) do
+      primary_key :id
+      string :slug, null: false
       string :backend, null: false
-      string :type, null: false
-      primary_key %i[object backend type], unique: true
-      string :room_id, null: true, default: nil
+      index %i[slug backend], unique: true
 
       string :name, null: true, default: nil
       string :url, null: true, default: nil
       string :avatar, null: true, default: nil
 
-      # JSON
-      string :extradata, null: true, default: nil
-
       datetime :last_metadata_update, null: false, default: Sequel::CURRENT_TIMESTAMP
       datetime :next_metadata_update, null: true, default: nil
       datetime :last_update, null: false, default: Sequel::CURRENT_TIMESTAMP
       datetime :next_update, null: true, default: nil
+
+      # JSON
+      string :extradata, null: true, default: nil
+    end
+
+    create_table(:tracking) do
+      primary_key :id
+
+      string :object, null: false
+      string :backend, null: false
+      string :type, null: false
+      string :room_id, null: false
+      index %i[object backend type room_id], unique: true
+
+      datetime :last_update, null: false, default: Sequel::CURRENT_TIMESTAMP
+      datetime :next_update, null: true, default: nil
+
+      # JSON
+      string :extradata, null: true, default: nil
+    end
+
+    create_table(:tracked_repositories) do
+      foreign_key :tracking_id, :tracking, on_delete: :cascade, on_update: :cascade
+      foreign_key :repositories_id, :repositories, on_delete: :cascade, on_update: :cascade
+      index %i[tracking_id repositories_id], primary_key: true, unique: true
+    end
+
+    create_table(:latest_releases) do
+      foreign_key :tracking_id, :tracking, on_delete: :cascade, on_update: :cascade
+      foreign_key :repositories_id, :repositories, on_delete: :cascade, on_update: :cascade
+      index %i[tracking_id repositories_id], unique: true
+
+      foreign_key :releases_id, :releases, on_delete: :cascade, on_update: :cascade
     end
   end
 end
