@@ -55,15 +55,17 @@ module MatrixReleasetracker
     end
 
     def reload!
-      reload_with_get
+      if @use_sync
+        reload_with_sync
+      else
+        reload_with_get
+      end
 
-      @room_data.each_key do |room_id|
+      api.get_joined_rooms.joined_rooms.each do |room_id|
         begin
           @room_data[room_id] = api.get_room_account_data(@user.user_id, room_id, ACCOUNT_DATA_KEY)
         rescue MatrixSdk::MatrixRequestError => e
           raise e unless e.code == 'M_NOT_FOUND'
-
-          @room_data[room_id] = {}
         end
       end
 

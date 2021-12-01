@@ -21,7 +21,19 @@ unless MatrixSdk::Api.instance_methods.include? :server_version
   end
 end
 
+
 ROOM_STATE_FILTER = {
+  presence: { senders: [], types: [] },
+  account_data: { senders: [], types: [] },
+  room: {
+    ephemeral: { senders: [], types: [] },
+    state: {
+      lazy_load_members: true
+    },
+    account_data: { senders: [], types: [] }
+  }
+}.freeze
+BLAH = {
   presence: { senders: [], types: [] },
   account_data: { senders: [], types: [] },
   room: {
@@ -131,7 +143,7 @@ def run!
   api = config.client.api
 
   logger.info 'Ensuring configured rooms are joined.'
-  config.backends.map { |_k, b| b.users.map { |u| u[:room] } }.flatten.uniq.each do |room|
+  config.backends.map { |_k, b| b.users.map { |u| u.room_id } }.flatten.uniq.each do |room|
     api.join_room(room.to_s)
 
     users = api.get_room_members(room)[:chunk].select { |c| c[:content][:membership] == 'join' }
@@ -143,76 +155,96 @@ def run!
     api.leave_room(room)
   end
 
+  running = true
+
+  #Signal.trap("TERM") { running = false; logger.info "Interrupt received, shutting down."; }
+
   logger.info "Starting tracker with #{config.backends.count} backends."
-  loop do
-    logger.info 'Checking Matrix client...'
-    api.sync(timeout: 5.0, set_presence: :offline, since: config.client.next_batch, filter: ROOM_STATE_FILTER.to_json).tap do |data|
-      config.client.next_batch = data[:next_batch]
+  sync_thread = Thread.new do 
+    Signal.trap("INT") { running = false; logger.info "Interrupt received, shutting down."; Thread.current.exit }
 
-      data.dig(:rooms, :invite)&.each do |room_id, _invite|
-        logger.info "  Invited to #{room_id}."
+    logger.info 'Starting Matrix sync loop...'
+    while running do
+      # Apparently a local bug in the HTTP server when polling too rapidly in a thread, so adding a bit of a delay
+      sleep 5
+      api.sync(timeout: 60.0, set_presence: :offline, since: config.client.next_batch, filter: ROOM_STATE_FILTER.to_json).tap do |data|
+        config.client.next_batch = data[:next_batch]
 
-        next if config.backends.map { |_k, b| b.users.map { |u| u[:room] } }.flatten.uniq.count > 50
+        data.dig(:rooms, :invite)&.each do |room_id, _invite|
+          logger.info "  Invited to #{room_id}."
 
-        logger.info "  Joining #{room_id}."
-        api.join_room(room_id.to_s)
-      end
+          next if config.backends.map { |_k, b| b.users.map { |u| u[:room] } }.flatten.uniq.count > 50
 
-      data.dig(:rooms, :join)&.each do |room_id, join|
-        join.dig(:timeline, :events)&.select { |ev| ev[:type] == 'm.room.message' && ev[:content] && ev[:content][:msgtype] == 'm.text' }.each do |message|
-          logger.info "  #{message[:sender]} in #{room_id}: #{message[:content][:body]}"
+          logger.info "  Joining #{room_id}."
+          api.join_room(room_id.to_s)
+        end
 
-          next unless message[:content][:body].start_with? '!github '
-          next unless config.backends.keys.include? :github
+        data.dig(:rooms, :join)&.each do |room_id, join|
+          join.dig(:timeline, :events)&.select { |ev| ev[:type] == 'm.room.message' && ev[:content] && ev[:content][:msgtype] == 'm.text' }.each do |message|
+            logger.info "  #{message[:sender]} in #{room_id}: #{message[:content][:body]}"
 
-          users = api.get_room_members(room_id)[:chunk].select { |c| c[:content][:membership] == 'join' }
-          next if users.count > 2
+            next unless message[:content][:body].start_with? '!github '
+            next unless config.backends.keys.include? :github
 
-          backend = config.backends[:github]
-          user = backend.users.find { |u| u.room.to_s == room_id.to_s }
+            users = api.get_room_members(room_id)[:chunk].select { |c| c[:content][:membership] == 'join' }
+            next if users.count > 2
 
-          gh_name = message[:content][:body][8..-1].downcase
-          next if user && user.name == gh_name
+            backend = config.backends[:github]
+            user = backend.users.find { |u| u.room_id == room_id.to_s }
 
-          if user
-            backend.update_user(user.name, object: gh_name)
-          else
-            backend.add_user(gh_name, { room_id: room_id.to_s })
+            gh_name = message[:content][:body][8..-1].downcase
+            next if user && user.object == gh_name
+
+            if user
+              backend.update_user(user.object, object: gh_name)
+            else
+              backend.add_user(gh_name, { room_id: room_id.to_s })
+            end
+
+            api.send_notice(room_id.to_s, "Now tracking GitHub user '#{gh_name}'")
           end
-
-          api.send_notice(room_id.to_s, "Now tracking GitHub user '#{gh_name}'")
         end
       end
     end
+  end
 
+  while running do
     config.backends.each do |_k, b|
       logger.info "Polling backend #{b.name} with #{b.users.count} users..."
       b.users.each do |u|
-        repos = b.stars(u.name)
-        releases = b.last_releases(u.name)
-        logger.info " Tracking #{repos.count} repositories - #{releases[:releases].count} with releases, for #{u[:name]}."
+        repos = b.stars(u.object)
+        releases = b.last_releases(u.object)
+        logger.info " Tracking #{repos.count} repositories - #{releases[:releases].count} with releases, for #{u.object}."
 
-        selected_releases = releases[:releases].reject { |_k, v| v.nil? || v.publish_date < (u.last_check || Time.new(0)) }
-        selected_releases.each do |_name, rel|
-          logger.info "   Posting notice about #{rel.full_name} #{rel.version}"
-          rel.avatar_url = fix_media_url(rel.avatar_url, config) if rel.avatar_url
-          api.send_message_event(
-            u[:room],
-            'm.room.message',
-            msgtype: 'm.notice',
-            body: rel.to_s(:markdown),
-            formatted_body: rel.to_s(:html),
-            format: 'org.matrix.custom.html'
-          )
+        releases[:releases].each do |_name, rel|
+          next if rel.nil?
+
+          latest = config.database[:latest_releases].where(tracking_id: u.id, repositories_id: rel.repositories_id).first
+          next if latest && rel.release_id == latest[:releases_id]
+
+          if Time.now - rel.publish_date > 7 * 24 * 60 * 60
+            logger.info "   #{rel.full_name} #{rel.version} release was more than 7 days ago (#{rel.publish_date}), skipping notice"
+          else
+            logger.info "   Posting notice about #{rel.full_name} #{rel.version}"
+            rel.avatar_url = fix_media_url(rel.avatar_url, config) if rel.avatar_url
+            api.send_message_event(
+              u.room_id,
+              'm.room.message',
+              msgtype: 'm.notice',
+              body: rel.to_s(:markdown),
+              formatted_body: rel.to_s(:html),
+              format: 'org.matrix.custom.html'
+            )
+          end
+          config.database[:latest_releases].insert_conflict(:replace).insert(tracking_id: u.id, repositories_id: rel.repositories_id, releases_id: rel.release_id)
+        rescue StandardError => e
+          logger.error "  Failed to post notice, #{e.class}: #{e}\n#{e.backtrace[0..10].join("\n")}"
         end
-        next unless selected_releases.any?
-
-        b.update_user(u.name, last_update: Time.now)
       end
     end
 
+    logger.info 'Finished polling, saving data...'
     config.save!
-    logger.info 'Finished polling, data saved.'
 
     limits = config.backends.values.map(&:rate_limits).flatten.compact
     limits.each do |l|
@@ -228,6 +260,8 @@ def run!
       sleep 15 * 60
     end
   end
+
+  sync_thread.join if sync_thread&.alive?
 end
 
 run! if $PROGRAM_NAME == __FILE__

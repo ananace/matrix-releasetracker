@@ -5,6 +5,7 @@ end
 module MatrixReleasetracker
   class Release
     attr_accessor :namespace, :name, :version, :commit_sha, :publish_date, :release_notes, :repo_url, :release_url, :avatar_url, :release_type
+    attr_accessor :repositories_id, :release_id
     attr_writer :version_name
 
     def initialize

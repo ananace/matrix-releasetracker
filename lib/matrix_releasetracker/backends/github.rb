@@ -66,10 +66,10 @@ module MatrixReleasetracker::Backends
           extradata: {
             repos: tracked.map(&:full_name)
           }.to_json,
-          last_metadata_update: Time.now,
-          next_metadata_update: Time.now + with_stagger(STAR_EXPIRY)
+          last_update: Time.now,
+          next_update: Time.now + with_stagger(STAR_EXPIRY)
         )
-        u = @users.find { |u| u.name == user }
+        u = @users.find { |u| u.object == user }
         u&.extradata = { 'repos' => tracked.map(&:full_name) }
 
         return tracked.map(&:full_name)
@@ -83,12 +83,11 @@ module MatrixReleasetracker::Backends
 
       logger.debug "Refreshed metadata for repository #{repo.full_name}"
 
-      db = find_tracking(repo.full_name, type: 'repository')
+      db = find_repository(repo.full_name)
       if db.empty?
         db.insert(
-          object: repo.full_name,
+          slug: repo.full_name,
           backend: db_type,
-          type: 'repository',
 
           name: repo.name,
           url: repo.html_url,
@@ -120,24 +119,26 @@ module MatrixReleasetracker::Backends
 
       logger.debug "Checking latest release for #{repo}"
 
-      db = find_tracking(repo, type: 'repository')
+      db = find_repository(repo)
       if db.empty? || (db.first[:next_metadata_update] || Time.now) < Time.now
         refresh_repo(repo, data)
-        db = find_tracking(repo, type: 'repository')
+        db = find_repository(repo)
 
         raise 'Failed to find repo data' if db.empty?
       end
 
-      if (db.first[:next_update] || Time.new(0)) > Time.now
-        latest = find_releases(namespace: repo).order_by(Sequel.desc(:publish_date))
+      repo = db.first
+
+      if (repo[:next_update] || Time.new(0)) > Time.now
+        latest = find_releases(repositories_id: repo[:id]).order_by(Sequel.desc(:publish_date))
         return latest.first
       end
 
-      logger.debug "Timeout (#{db.first[:next_update]}) reached on `latest_release`, refreshing data for repository #{repo}"
+      logger.debug "Timeout (#{db.first[:next_update]}) reached on `latest_release`, refreshing data for repository #{repo[:slug]}"
 
       db.update(
         last_update: Time.now,
-        next_update: Time.now + with_stagger(find_releases(namespace: repo).any? ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY)
+        next_update: Time.now + with_stagger(find_releases(repositories_id: repo[:id]).any? ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY)
       )
 
       extradata = JSON.parse(db.first[:extradata] || '{}')
@@ -148,16 +149,15 @@ module MatrixReleasetracker::Backends
       end
 
       if gql_available?
-        latest = find_gql_releases(repo).select { |r| allow.include? r[:type] }.last
+        latest = find_gql_releases(repo[:slug]).select { |r| allow.include? r[:type] }.last
       elsif allow.include? :release
-        latest = find_rest_releases(repo).last
+        latest = find_rest_releases(repo[:slug]).last
       end
 
       if latest
         database[:releases].insert_conflict(:replace).insert(
-          namespace: repo,
           version: latest[:tag_name],
-          backend: db_type,
+          repositories_id: repo[:id],
 
           name: latest[:name] || latest[:tag_name] || latest[:sha],
           commit_sha: latest[:sha],
@@ -168,7 +168,7 @@ module MatrixReleasetracker::Backends
         )
       end
 
-      find_releases(namespace: repo).order_by(Sequel.desc(:publish_date)).first
+      find_releases(repositories_id: repo[:id]).order_by(Sequel.desc(:publish_date)).first
     rescue Octokit::NotFound
       nil
     end
@@ -287,10 +287,13 @@ module MatrixReleasetracker::Backends
           latest = latest_release(star, data)
           next if latest.nil?
 
-          repo = find_tracking(star, type: 'repository').first
+          repo = find_repository(star).first
           ret[star] = [latest].compact.map do |rel|
             MatrixReleasetracker::Release.new.tap do |store|
-              store.namespace = repo[:object].split('/')[0..-2].join '/'
+              store.repositories_id = repo[:id]
+              store.release_id = latest[:id]
+
+              store.namespace = repo[:slug].split('/')[0..-2].join '/'
               store.name = repo[:name]
               store.repo_url = repo[:url]
               store.avatar_url = repo[:avatar] ? repo[:avatar] + '&s=32' : 'https://avatars1.githubusercontent.com/u/9919?s=32'
