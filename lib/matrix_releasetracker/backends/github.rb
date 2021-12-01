@@ -57,25 +57,52 @@ module MatrixReleasetracker::Backends
       db = find_tracking(user, type: 'user')
       raise 'Unknown user' unless db
 
-      refresh_user(user) if db.empty? || (db.first[:next_metadata_update] || Time.new(0)) < Time.now
-      if db.first[:extradata].nil? || db.first[:extradata].empty? || db.first[:extradata] == '{}' || (db.first[:next_metadata_update] || Time.new(0)) < Time.now
+      refresh_user(user) if db.empty? || (db.first[:next_update] || Time.new(0)) < Time.now
+      db = find_tracking(user, type: 'user') if db.empty?
+
+      raise 'Failed to discover user' if db.empty?
+
+      user_id = db.first[:id]
+
+      tracked = database[:repositories].where(id: database[:tracked_repositories].where(tracking_id: user_id).select(:id)).map { |repo| repo[:slug] }
+
+      if tracked.empty? || (db.first[:next_update] || Time.new(0)) < Time.now
         logger.debug "Timeout reached on `stars`, refreshing data for user #{user}."
-        tracked = paginate { client.starred(user, data) }
+        current = tracked
+        tracked = paginate { client.starred(user, data) }.map(&:full_name)
+
+        to_add = (tracked - current)
+        to_add.each do |repo|
+          repo = find_repository(repo).first
+          if repo.empty?
+            refresh_repo(repo)
+            repo = find_repository(repo).first
+          end
+
+          logger.debug "Adding tracking of repo #{repo[:slug]} (#{repo[:id]}) for #{user} (#{user_id})"
+          database[:tracked_repositories].insert_conflict(:ignore).insert(tracking_id: user_id, repositories_id: repo[:id])
+        end
+        to_remove = (current - tracked)
+        to_remove.each do |repo|
+          repo = find_repository(repo).first
+          if repo.empty?
+            refresh_repo(repo)
+            repo = find_repository(repo).first
+          end
+          logger.debug "Removing tracking of repo #{repo[:slug]} (#{repo[:id]}) for #{user} (#{user_id})"
+          database[:tracked_repositories].delete(tracking_id: user_id, repositories_id: repo[:id])
+        end
 
         db.update(
-          extradata: {
-            repos: tracked.map(&:full_name)
-          }.to_json,
+          extradata: { }.to_json,
           last_update: Time.now,
           next_update: Time.now + with_stagger(STAR_EXPIRY)
         )
-        u = @users.find { |u| u.object == user }
-        u&.extradata = { 'repos' => tracked.map(&:full_name) }
 
-        return tracked.map(&:full_name)
+        return tracked
       end
 
-      JSON.parse(db.first[:extradata])['repos']
+      tracked = database[:repositories].where(id: database[:tracked_repositories].where(tracking_id: user_id).select(:id)).map { |repo| repo[:slug] }
     end
 
     def refresh_repo(repo, data = {})

@@ -73,7 +73,7 @@ Sequel.migration do
     create_table(:tracked_repositories) do
       foreign_key :tracking_id, :tracking, on_delete: :cascade, on_update: :cascade
       foreign_key :repositories_id, :repositories, on_delete: :cascade, on_update: :cascade
-      index %i[tracking_id repositories_id], primary_key: true, unique: true
+      index %i[tracking_id repositories_id], unique: true
     end
 
     create_table(:latest_releases) do
