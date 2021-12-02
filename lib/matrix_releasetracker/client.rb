@@ -85,12 +85,15 @@ module MatrixReleasetracker
         logger.debug 'Saving account data'
         api.set_account_data(@user.user_id, ACCOUNT_DATA_KEY, to_save)
 
-        logger.debug "Saving room account data for #{@room_data.size} rooms"
+        logger.debug "Saving room account data for #{@room_data.size} rooms..."
         @room_data.each do |room_id, data|
           next if data.nil? || data.empty?
 
+          logger.debug "- Saving room account data for room #{room_id}"
           api.set_room_account_data(@user.user_id, room_id, ACCOUNT_DATA_KEY, data)
         end
+
+        logger.debug 'Saved all account data'
 
         return true
       rescue StandardError => e
