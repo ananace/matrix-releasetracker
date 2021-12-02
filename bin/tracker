@@ -156,19 +156,15 @@ def run!
   end
 
   running = true
-
+  #Signal.trap("INT") { running = false; logger.info "Interrupt received, shutting down."; }
   #Signal.trap("TERM") { running = false; logger.info "Interrupt received, shutting down."; }
 
   logger.info "Starting tracker with #{config.backends.count} backends."
   sync_thread = Thread.new do 
-    Signal.trap("INT") { running = false; logger.info "Interrupt received, shutting down."; Thread.current.exit }
-
     logger.info 'Starting Matrix sync loop...'
     while running do
       begin
-        # Apparently a local bug in the HTTP server when polling too rapidly in a thread, so adding a bit of a delay
-        sleep 5
-        api.sync(timeout: 60.0, set_presence: :offline, since: config.client.next_batch, filter: ROOM_STATE_FILTER.to_json).tap do |data|
+        api.sync(timeout: 10.0, set_presence: :offline, since: config.client.next_batch, filter: ROOM_STATE_FILTER.to_json).tap do |data|
           config.client.next_batch = data[:next_batch]
 
           data.dig(:rooms, :invite)&.each do |room_id, _invite|
@@ -207,8 +203,8 @@ def run!
           end
         end
       rescue StandardError => e
-        logger.error "Failed to run sync, #{e.class}: #{e}. Backing off for 30s"
-        sleep 25
+        logger.error "#{e.class} in sync: #{e}. Retrying in 30s"
+        sleep 30
       end
     end
   end

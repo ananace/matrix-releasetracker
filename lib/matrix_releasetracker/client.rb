@@ -34,6 +34,10 @@ module MatrixReleasetracker
       end
     end
 
+    def logger
+      Logging.logger[self]
+    end
+
     def next_batch
       data[:next_batch]
     end
@@ -61,6 +65,8 @@ module MatrixReleasetracker
         reload_with_get
       end
 
+      @data.delete :users
+
       api.get_joined_rooms.joined_rooms.each do |room_id|
         begin
           @room_data[room_id] = api.get_room_account_data(@user.user_id, room_id, ACCOUNT_DATA_KEY)
@@ -73,16 +79,25 @@ module MatrixReleasetracker
     end
 
     def save!
-      to_save = @data
-      api.set_account_data(@user.user_id, ACCOUNT_DATA_KEY, to_save)
+      attempts = 0
+      loop do
+        to_save = @data
+        api.set_account_data(@user.user_id, ACCOUNT_DATA_KEY, to_save)
 
-      @room_data.each do |room_id, data|
-        next if data.nil? || data.empty?
+        @room_data.each do |room_id, data|
+          next if data.nil? || data.empty?
 
-        api.set_room_account_data(@user.user_id, room_id, ACCOUNT_DATA_KEY, data)
+          api.set_room_account_data(@user.user_id, room_id, ACCOUNT_DATA_KEY, data)
+        end
+
+        return true
+      rescue StandardError => e
+        raise if attempts >= 5
+        attempts += 1
+
+        logger.error "#{e.class} when storing account data: #{e}. Retrying in 10s"
+        sleep 10
       end
-
-      true
     end
 
     private
