@@ -82,8 +82,10 @@ module MatrixReleasetracker
       attempts = 0
       loop do
         to_save = @data
+        logger.debug 'Saving account data'
         api.set_account_data(@user.user_id, ACCOUNT_DATA_KEY, to_save)
 
+        logger.debug "Saving room account data for #{@room_data.size} rooms"
         @room_data.each do |room_id, data|
           next if data.nil? || data.empty?
 
