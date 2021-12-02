@@ -228,12 +228,12 @@ def run!
           if latest && rel.release_id == latest[:releases_id]
             # logger.debug "Release #{rel.full_name} #{rel.version_name} (#{rel.release_id}) same as the latest notified one, skipping notice."
           else
-            logger.debug "Latest release #{rel.full_name} #{rel.version_name} (#{rel.release_id}) newer than #{latest[:releases_id]}." if latest
+            logger.debug "Latest release #{rel.full_name} #{rel.version_name} (#{u.id}/#{rel.repositories_id}/#{rel.release_id}} newer than #{latest[:releases_id]}." if latest
 
             if Time.now - rel.publish_date > 7 * 24 * 60 * 60
               logger.debug "#{rel.full_name} #{rel.version_name} release was more than 7 days ago (#{rel.publish_date}), skipping notice."
             else
-              logger.info "Posting notice about #{rel.full_name} #{rel.version_name} (#{u.id}/#{rel.repositories_id}/#{rel.release_id}}"
+              logger.info "Posting notice about #{rel.full_name} #{rel.version_name}"
               rel.avatar_url = fix_media_url(rel.avatar_url, config) if rel.avatar_url
               api.send_message_event(
                 u.room_id,
