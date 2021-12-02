@@ -161,7 +161,7 @@ module MatrixReleasetracker::Backends
         return latest.first
       end
 
-      logger.debug "Timeout (#{db.first[:next_update]}) reached on `latest_release`, refreshing data for repository #{repo[:slug]}"
+      logger.debug "Timeout (#{repo[:next_update]}) reached on `latest_release`, refreshing data for repository #{repo[:slug]}"
 
       db.update(
         last_update: Time.now,

@@ -202,8 +202,10 @@ def run!
             end
           end
         end
-        # No need to run syncs at a rapid pace
-        sleep 5
+
+        config.save!
+
+        sleep 10
       rescue StandardError => e
         logger.error "#{e.class} in sync: #{e}. Retrying in 30s"
         sleep 30
@@ -245,9 +247,6 @@ def run!
         end
       end
     end
-
-    logger.debug 'Finished polling, saving data...'
-    config.save!
 
     limits = config.backends.values.map(&:rate_limits).flatten.compact
     limits.each do |l|
