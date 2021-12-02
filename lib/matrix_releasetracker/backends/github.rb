@@ -182,7 +182,7 @@ module MatrixReleasetracker::Backends
       end
 
       if latest
-        database[:releases].insert_conflict(:replace).insert(
+        database[:releases].insert_conflict(:ignore).insert(
           version: latest[:tag_name],
           repositories_id: repo[:id],
 

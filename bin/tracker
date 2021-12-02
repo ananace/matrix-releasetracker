@@ -225,22 +225,27 @@ def run!
           next if rel.nil?
 
           latest = config.database[:latest_releases].where(tracking_id: u.id, repositories_id: rel.repositories_id).first
-          next if latest && rel.release_id == latest[:releases_id]
-
-          if Time.now - rel.publish_date > 7 * 24 * 60 * 60
-            logger.debug "   #{rel.full_name} #{rel.version} release was more than 7 days ago (#{rel.publish_date}), skipping notice"
+          if latest && rel.release_id == latest[:releases_id]
+            # logger.debug "Release #{rel.full_name} #{rel.version_name} (#{rel.release_id}) same as the latest notified one, skipping notice."
           else
-            logger.info "Posting notice about #{rel.full_name} #{rel.version}"
-            rel.avatar_url = fix_media_url(rel.avatar_url, config) if rel.avatar_url
-            api.send_message_event(
-              u.room_id,
-              'm.room.message',
-              msgtype: 'm.notice',
-              body: rel.to_s(:markdown),
-              formatted_body: rel.to_s(:html),
-              format: 'org.matrix.custom.html'
-            )
+            logger.debug "Latest release #{rel.full_name} #{rel.version_name} (#{rel.release_id}) newer than #{latest[:releases_id]}." if latest
+
+            if Time.now - rel.publish_date > 7 * 24 * 60 * 60
+              logger.debug "#{rel.full_name} #{rel.version_name} release was more than 7 days ago (#{rel.publish_date}), skipping notice."
+            else
+              logger.info "Posting notice about #{rel.full_name} #{rel.version_name} (#{u.id}/#{rel.repositories_id}/#{rel.release_id}}"
+              rel.avatar_url = fix_media_url(rel.avatar_url, config) if rel.avatar_url
+              api.send_message_event(
+                u.room_id,
+                'm.room.message',
+                msgtype: 'm.notice',
+                body: rel.to_s(:markdown),
+                formatted_body: rel.to_s(:html),
+                format: 'org.matrix.custom.html'
+              )
+            end
           end
+
           config.database[:latest_releases].insert_conflict(:replace).insert(tracking_id: u.id, repositories_id: rel.repositories_id, releases_id: rel.release_id)
         rescue StandardError => e
           logger.error "Failed to post notice, #{e.class}: #{e}\n#{e.backtrace[0..10].join("\n")}"

@@ -13,6 +13,10 @@ module MatrixReleasetracker
       @markdown_template = File.join File.expand_path('templates', __dir__), 'markdown.erb'
     end
 
+    def to_s
+      "#{full_name} #{version_name || version}"
+    end
+
     def version_name
       @version_name || name
     end
