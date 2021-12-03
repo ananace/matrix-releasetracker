@@ -49,6 +49,12 @@ BLAH = {
   }
 }.freeze
 
+$logger = Logging.logger['MatrixReleasetracker'].tap do |log|
+  log.add_appenders Logging.appenders.stderr(
+    layout: Logging::Layouts.pattern(pattern: "[%d|%.1l] %c: %m\n", date_pattern: '%F %T')
+  )
+end
+
 def fix_media_url(url, config)
   result = nil
   stored = config.media.where original_url: url
@@ -83,6 +89,8 @@ def fix_media_url(url, config)
     result.value
   end
 
+  raise 'No image data downloaded' if result.body.empty?
+
   mxc_url = config.client.api.media_upload(result.body, result.content_type)[:content_uri]
   raise 'Failed to upload image' unless mxc_url
 
@@ -98,6 +106,9 @@ def fix_media_url(url, config)
   end
 
   mxc_url
+rescue StandardError => e
+  $logger.error "#{e.class} when trying to fix media URL: #{e}"
+  nil
 end
 
 def run!
@@ -129,13 +140,9 @@ def run!
   end
   opts_parser.parse!
 
+  logger = $logger
+  logger.level = options[:loglevel]
   MatrixSdk.debug! if options[:sdk_debug]
-  logger = Logging.logger['MatrixReleasetracker'].tap do |log|
-    log.add_appenders Logging.appenders.stderr(
-      layout: Logging::Layouts.pattern(pattern: "[%d|%.1l] %c: %m\n", date_pattern: '%F %T')
-    )
-    log.level = options[:loglevel]
-  end
 
   config = MatrixReleasetracker::Config.load! options[:config]
   logger.info 'Loaded configuration.'
