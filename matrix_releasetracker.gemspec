@@ -26,7 +26,7 @@ Gem::Specification.new do |spec|
 
   # TODO: Gem groups
   spec.add_dependency 'sqlite3', '~> 1.4' # SQLite
-  # spec.add_dependency 'pg', '~> 1.2'    # PostgreSQL
+  spec.add_dependency 'pg', '~> 1.2'      # PostgreSQL
 
   spec.add_development_dependency 'bundler', '>= 1', '< 3'
   spec.add_development_dependency 'minitest', '~> 5'
