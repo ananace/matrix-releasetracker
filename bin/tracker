@@ -6,84 +6,110 @@ require 'optparse'
 require 'matrix_releasetracker'
 require 'net/http'
 
-# Fix for issue in Matrix SDK 1.1.0
-unless MatrixSdk::Api.instance_methods.include? :server_version
-  MatrixSdk::Api.class_eval do
-    def server_version
-      MatrixSdk::Response.new(self, request(:get, :federation_v1, '/version').server).tap do |resp|
-        resp.instance_eval <<-'CODE', __FILE__, __LINE__ + 1
-          def to_s
-            "#{name} #{version}"
-          end
-        CODE
-      end
-    end
-  end
-end
-
 ROOM_STATE_FILTER = {
   presence: { senders: [], types: [] },
   account_data: { senders: [], types: [] },
   room: {
     ephemeral: { senders: [], types: [] },
     state: {
-      types: ['m.room.member'],
       lazy_load_members: true
-    },
-    timeline: {
-      types: ['m.room.message']
     },
     account_data: { senders: [], types: [] }
   }
 }.freeze
 
 class ReleasetrackerRunner
-  attr_reader :logger, :config, :options
+  attr_accessor :running
+  attr_reader :logger, :config, :options, :api
 
-  def run!
-    @options = {
-      config: 'releasetracker.yml',
-      loglevel: :info,
-      sdk_debug: false
-    }
-
-    opts_parser = OptionParser.new do |opts|
-      opts.banner = "Usage: #{File.basename($PROGRAM_NAME, File.extname($PROGRAM_NAME))} [ARGS...]"
-
-      opts.on('-c', '--config CONFIG', 'specify the config file to use - defaults to "releasetracker.yml"') do |config|
-        options[:config] = config
-      end
-
-      opts.on('-d', 'debug the SDK calls') do
-        options[:sdk_debug] = true
-      end
-
-      opts.on('-v', '--verbose', 'use verbose output') do
-        options[:loglevel] = :debug
-      end
-
-      opts.on('-h', '--help', 'show this text') do
-        puts opts_parser
-        exit
-      end
-    end
-    opts_parser.parse!
-
-    MatrixSdk.debug! if options[:sdk_debug]
+  def initialize(**options)
+    @options = options
     @logger = Logging.logger['MatrixReleasetracker'].tap do |log|
       log.add_appenders Logging.appenders.stderr(
         layout: Logging::Layouts.pattern(pattern: "[%d|%.1l] %c: %m\n", date_pattern: '%F %T')
       )
       log.level = options[:loglevel]
     end
-
     @config = MatrixReleasetracker::Config.load! options[:config]
     logger.info 'Loaded configuration.'
 
-    api = config.client.api
+    @api = config.client.api
+  end
 
+  def run!
+    ensure_rooms
+
+    logger.info "Starting tracker with #{config.backends.count} backends."
+    @running = true
+
+    sync_thread = Thread.new { matrix_thread }
+
+    while running do
+      update_backends
+
+      limits = config.backends.values.map(&:rate_limits).flatten.compact
+      limits.each do |l|
+        logger.info "Limit|#{l}"
+      end
+      limits = limits.select(&:near_limit)
+      if limits.any?
+        latest = limits.max(&:resets_in)
+        logger.info "Backend limits almost reached for #{latest.backend.name}, sleeping for at least #{latest.resets_in / 60.0} minutes"
+        sleep [latest.resets_in, 15 * 60].max
+      else
+        sleep 15 * 60
+      end
+    end
+
+    sync_thread.join if sync_thread&.alive?
+  end
+
+  private
+
+  def update_backends
+    config.backends.each do |_k, b|
+      logger.info "Polling backend #{b.name} with #{b.users.count} users..."
+      b.users.each do |u|
+        repos = b.stars(u.object)
+        releases = b.last_releases(u.object)
+        logger.info "Tracking #{repos.count} repositories - #{releases[:releases].count} with releases, for #{u.object}."
+
+        releases[:releases].each do |_name, rel|
+          next if rel.nil?
+
+          latest = config.database[:latest_releases].where(tracking_id: u.id, repositories_id: rel.repositories_id).first
+          if latest && rel.release_id == latest[:releases_id]
+            # logger.debug "Release #{rel.full_name} #{rel.version_name} (#{rel.release_id}) same as the latest notified one, skipping notice."
+          else
+            logger.debug "Latest release #{rel.full_name} #{rel.version_name} (#{u.id}/#{rel.repositories_id}/#{rel.release_id}} newer than #{latest[:releases_id]}." if latest
+
+            if Time.now - rel.publish_date > 7 * 24 * 60 * 60
+              logger.debug "#{rel.full_name} #{rel.version_name} release was more than 7 days ago (#{rel.publish_date}), skipping notice."
+            else
+              logger.info "Posting notice about #{rel.full_name} #{rel.version_name}"
+              rel.avatar_url = fix_media_url(rel.avatar_url) if rel.avatar_url
+              api.send_message_event(
+                u.room_id,
+                'm.room.message',
+                msgtype: 'm.notice',
+                body: rel.to_s(:markdown),
+                formatted_body: rel.to_s(:html),
+                format: 'org.matrix.custom.html'
+              )
+            end
+          end
+
+          config.database[:latest_releases].insert_conflict(:replace).insert(tracking_id: u.id, repositories_id: rel.repositories_id, releases_id: rel.release_id)
+        rescue StandardError => e
+          logger.error "Failed to post notice, #{e.class}: #{e}\n#{e.backtrace[0..10].join("\n")}"
+        end
+      end
+    end
+  end
+
+  def ensure_rooms
     logger.info 'Ensuring configured rooms are joined.'
-    config.backends.map { |_k, b| b.users.map { |u| u[:room] } }.flatten.uniq.each do |room|
+    config.backends.map { |_k, b| b.users.map { |u| u.room_id } }.flatten.uniq.each do |room|
       api.join_room(room.to_s)
 
       users = api.get_room_members(room)[:chunk].select { |c| c[:content][:membership] == 'join' }
@@ -94,95 +120,60 @@ class ReleasetrackerRunner
 
       api.leave_room(room)
     end
+  end
 
-    logger.info "Starting tracker with #{config.backends.count} backends."
-    loop do
-      logger.info 'Checking Matrix client...'
-      api.sync(timeout: 5.0, set_presence: :offline, since: config.client.next_batch, filter: ROOM_STATE_FILTER.to_json).tap do |data|
-        config.client.next_batch = data[:next_batch]
+  def matrix_thread
+    logger.info 'Starting Matrix sync loop...'
+    while running do
+      begin
+        api.sync(timeout: 10.0, set_presence: :offline, since: config.client.next_batch, filter: ROOM_STATE_FILTER.to_json).tap do |data|
+          config.client.next_batch = data[:next_batch]
 
-        data.dig(:rooms, :invite)&.each do |room_id, _invite|
-          logger.info "  Invited to #{room_id}."
+          data.dig(:rooms, :invite)&.each do |room_id, _invite|
+            logger.info "Invited to #{room_id}."
 
-          next if config.backends.map { |_k, b| b.users.map { |u| u[:room] } }.flatten.uniq.count > 50
+            next if config.backends.map { |_k, b| b.users.map { |u| u[:room] } }.flatten.uniq.count > 50
 
-          logger.info "  Joining #{room_id}."
-          api.join_room(room_id.to_s)
-        end
+            logger.info "Joining #{room_id}."
+            api.join_room(room_id.to_s)
+          end
 
-        data.dig(:rooms, :join)&.each do |room_id, join|
-          join.dig(:timeline, :events)&.select { |ev| ev[:type] == 'm.room.message' && ev[:content] && ev[:content][:msgtype] == 'm.text' }.each do |message|
-            logger.info "  #{message[:sender]} in #{room_id}: #{message[:content][:body]}"
+          data.dig(:rooms, :join)&.each do |room_id, join|
+            join.dig(:timeline, :events)&.select { |ev| ev[:type] == 'm.room.message' && ev[:content] && ev[:content][:msgtype] == 'm.text' }.each do |message|
+              logger.info "#{message[:sender]} in #{room_id}: #{message[:content][:body]}"
 
-            next unless message[:content][:body].start_with? '!github '
-            next unless config.backends.keys.include? :github
+              next unless message[:content][:body].start_with? '!github '
+              next unless config.backends.keys.include? :github
 
-            users = api.get_room_members(room_id)[:chunk].select { |c| c[:content][:membership] == 'join' }
-            next if users.count > 2
+              users = api.get_room_members(room_id)[:chunk].select { |c| c[:content][:membership] == 'join' }
+              next if users.count > 2
 
-            backend = config.backends[:github]
-            user = backend.users.find { |u| u.room.to_s == room_id.to_s }
+              backend = config.backends[:github]
+              user = backend.users.find { |u| u.room_id == room_id.to_s }
 
-            gh_name = message[:content][:body][8..-1].downcase
-            next if user && user.name == gh_name
+              gh_name = message[:content][:body][8..-1].downcase
+              next if user && user.object == gh_name
 
-            if user
-              backend.update_user(user.name, object: gh_name)
-            else
-              backend.add_user(gh_name, { room_id: room_id.to_s })
+              if user
+                backend.update_user(user.object, object: gh_name)
+              else
+                backend.add_user(gh_name, { room_id: room_id.to_s })
+              end
+
+              api.send_notice(room_id.to_s, "Now tracking GitHub user '#{gh_name}'")
             end
-
-            api.send_notice(room_id.to_s, "Now tracking GitHub user '#{gh_name}'")
           end
         end
-      end
 
-      config.backends.each do |_k, b|
-        logger.info "Polling backend #{b.name} with #{b.users.count} users..."
-        b.users.each do |u|
-          repos = b.stars(u.name)
-          releases = b.last_releases(u.name)
-          logger.info " Tracking #{repos.count} repositories - #{releases[:releases].count} with releases, for #{u[:name]}."
+        config.save!
 
-          selected_releases = releases[:releases].reject { |_k, v| v.nil? || v.publish_date < (u.last_check || Time.new(0)) }
-          selected_releases.each do |_name, rel|
-            logger.info "   Posting notice about #{rel.full_name} #{rel.version}"
-            rel.avatar_url = fix_media_url(rel.avatar_url) if rel.avatar_url
-            api.send_message_event(
-              u[:room],
-              'm.room.message',
-              msgtype: 'm.notice',
-              body: rel.to_s(:markdown),
-              formatted_body: rel.to_s(:html),
-              format: 'org.matrix.custom.html'
-            )
-          end
-          next unless selected_releases.any?
-
-          b.update_user(u.name, last_update: Time.now)
-        end
-      end
-
-      config.save!
-      logger.info 'Finished polling, data saved.'
-
-      limits = config.backends.values.map(&:rate_limits).flatten.compact
-      limits.each do |l|
-        logger.info "Limit|#{l}"
-      end
-      limits = limits.select(&:near_limit)
-      if limits.any?
-        latest = limits.max(&:resets_in)
-
-        logger.info "Backend limits almost reached for #{latest.backend.name}, sleeping for at least #{latest.resets_in / 60.0} minutes"
-        sleep [latest.resets_in, 15 * 60].max
-      else
-        sleep 15 * 60
+        sleep 10
+      rescue StandardError => e
+        logger.error "#{e.class} in sync: #{e}. Retrying in 30s"
+        sleep 30
       end
     end
   end
-
-  private
 
   def fix_media_url(url)
     result = nil
@@ -235,12 +226,46 @@ class ReleasetrackerRunner
     end
 
     mxc_url
-  rescue StandardError => ex
-    logger.error "Failed to fix media url for #{url.inspect} - #{ex.class}: #{ex}"
+  rescue StandardError => e
+    $logger.error "#{e.class} when trying to fix media URL: #{e}"
     nil
   end
 end
 
 if $PROGRAM_NAME == __FILE__
-  ReleasetrackerRunner.new.run!
+  options = {
+    config: 'releasetracker.yml',
+    loglevel: :info,
+    sdk_debug: false
+  }
+
+  opts_parser = OptionParser.new do |opts|
+    opts.banner = "Usage: #{File.basename($PROGRAM_NAME, File.extname($PROGRAM_NAME))} [ARGS...]"
+
+    opts.on('-c', '--config CONFIG', 'specify the config file to use - defaults to "releasetracker.yml"') do |config|
+      options[:config] = config
+    end
+
+    opts.on('-d', 'debug the SDK calls') do
+      options[:sdk_debug] = true
+    end
+
+    opts.on('-v', '--verbose', 'use verbose output') do
+      options[:loglevel] = :debug
+    end
+
+    opts.on('-h', '--help', 'show this text') do
+      puts opts_parser
+      exit
+    end
+  end
+  opts_parser.parse!
+
+  MatrixSdk.debug! if options.delete :sdk_debug
+
+  runner = ReleasetrackerRunner.new(**options)
+  #Signal.trap("INT") { runner.running = false; logger.info "Interrupt received, shutting down."; }
+  #Signal.trap("TERM") { runner.running = false; logger.info "Interrupt received, shutting down."; }
+
+  runner.run!
 end

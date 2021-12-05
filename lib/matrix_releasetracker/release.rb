@@ -5,11 +5,16 @@ end
 module MatrixReleasetracker
   class Release
     attr_accessor :namespace, :name, :version, :commit_sha, :publish_date, :release_notes, :repo_url, :release_url, :avatar_url, :release_type
+    attr_accessor :repositories_id, :release_id
     attr_writer :version_name
 
     def initialize
       @plain_template = File.join File.expand_path('templates', __dir__), 'plain.erb'
       @markdown_template = File.join File.expand_path('templates', __dir__), 'markdown.erb'
+    end
+
+    def to_s
+      "#{full_name} #{version_name || version}"
     end
 
     def version_name

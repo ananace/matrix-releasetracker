@@ -22,9 +22,11 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'logging', '~> 2'
   spec.add_dependency 'matrix_sdk', '~> 2'
   spec.add_dependency 'octokit', '~> 4.16'
+  spec.add_dependency 'sequel', '~> 5.51'
+
   # TODO: Gem groups
-  spec.add_dependency 'sequel'
-  spec.add_dependency 'sqlite3'
+  spec.add_dependency 'sqlite3', '~> 1.4' # SQLite
+  # spec.add_dependency 'pg', '~> 1.2'    # PostgreSQL
 
   spec.add_development_dependency 'bundler', '>= 1', '< 3'
   spec.add_development_dependency 'minitest', '~> 5'

@@ -28,36 +28,27 @@ module MatrixReleasetracker
     end
 
     def users
-      return @users if @users
-
-      tracking = database[:tracking]
-      @users = tracking.where(type: 'user', backend: db_type).map do |t|
-        Structs::User.new t[:object], t[:room_id], self, t[:last_update], t[:extradata]
+      @users ||= database[:tracking].where(type: 'user', backend: db_type).map do |t|
+        Structs::User.new t.merge(backend: self)
       end
 
       # @repos = tracking.where(type: 'repo').map do |t|
       #   Structs::Repo.new t[:object], t[:room_id], t[:backend], t[:last_update], t[:extradata]
       # end
-
-      @users
     end
 
     def add_user(name, **data)
       tracking = database[:tracking]
       u = tracking.insert(type: 'user', backend: db_type, object: name, **data)
-      @users = tracking.where(type: 'user', backend: db_type).map do |t|
-        Structs::User.new t[:object], t[:room_id], self, t[:last_update], t[:extradata]
-      end
+      @users = nil
+
       u
     end
 
     def update_user(name, **data)
       u = find_tracking(name, type: 'user').update(**data)
+      @users = nil
 
-      tracking = database[:tracking]
-      @users = tracking.where(type: 'user', backend: db_type).map do |t|
-        Structs::User.new t[:object], t[:room_id], self, t[:last_update], t[:extradata]
-      end
       u
     end
 
@@ -94,12 +85,17 @@ module MatrixReleasetracker
       value + (Random.rand - 0.5) * (value / 2.0)
     end
 
+    def find_repository(name, **filters)
+      database[:repositories].where(filters.merge(slug: name, backend: db_type))
+    end
+
     def find_tracking(name, **filters)
+      raise 'Using old :type param' if filters[:type] == 'repository'
       database[:tracking].where(filters.merge(object: name, backend: db_type))
     end
 
     def find_releases(**filters)
-      database[:releases].where(filters.merge(backend: db_type))
+      database[:releases].where(filters)
     end
   end
 end
