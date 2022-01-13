@@ -72,8 +72,13 @@ module MatrixReleasetracker::Backends
         tracked = paginate { client.starred(user, data) }.map(&:full_name)
 
         to_add = (tracked - current)
-        to_add.each do |repo|
-          repo = find_repository(repo).first
+        to_add.each do |repo_name|
+          repo = find_repository(repo_name).first
+          if repo.nil?
+            logger.debug "Discovered null repo in stars refresh when adding #{repo_name} as part of #{to_add}"
+            next
+          end
+
           if repo.empty?
             refresh_repo(repo)
             repo = find_repository(repo).first
@@ -83,8 +88,13 @@ module MatrixReleasetracker::Backends
           database[:tracked_repositories].insert_conflict(:ignore).insert(tracking_id: user_id, repositories_id: repo[:id])
         end
         to_remove = (current - tracked)
-        to_remove.each do |repo|
-          repo = find_repository(repo).first
+        to_remove.each do |repo_name|
+          repo = find_repository(repo_name).first
+          if repo.nil?
+            logger.debug "Discovered null repo in stars refresh when removing #{repo_name} as part of #{to_remove}"
+            next
+          end
+
           if repo.empty?
             refresh_repo(repo)
             repo = find_repository(repo).first

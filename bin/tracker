@@ -227,7 +227,7 @@ class ReleasetrackerRunner
 
     mxc_url
   rescue StandardError => e
-    $logger.error "#{e.class} when trying to fix media URL: #{e}"
+    logger.error "#{e.class} when trying to fix media URL: #{e}"
     nil
   end
 end
