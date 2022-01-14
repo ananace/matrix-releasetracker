@@ -51,68 +51,75 @@ module MatrixReleasetracker::Backends
       end
     end
 
-    def stars(user, data = {})
-      user = user.name unless user.is_a? String
+    def stars(user_name, data = {})
+      user_name = user_name.name unless user_name.is_a? String
 
-      db = find_tracking(user, type: 'user')
+      db = find_tracking(user_name, type: 'user')
       raise 'Unknown user' unless db
 
-      refresh_user(user) if db.empty? || (db.first[:next_update] || Time.new(0)) < Time.now
-      db = find_tracking(user, type: 'user') if db.empty?
+      user = db.first
+      if user.nil? || (user[:next_update] || Time.new(0)) < Time.now
+        refresh_user(user_name)
+        user = db.first
+      end
 
-      raise 'Failed to discover user' if db.empty?
+      raise 'Failed to discover user' if user.nil?
 
-      user_id = db.first[:id]
+      user_id = user[:id]
 
-      tracked = database[:repositories].where(id: database[:tracked_repositories].where(tracking_id: user_id).select(:id)).map { |repo| repo[:slug] }
+      tracked = database[:repositories].where(id: database[:tracked_repositories].where(tracking_id: user_id).select(:repositories_id)).map { |repo| repo[:slug] }
 
-      if tracked.empty? || (db.first[:next_update] || Time.new(0)) < Time.now
-        logger.debug "Timeout reached on `stars`, refreshing data for user #{user}."
-        current = tracked
+      if tracked.empty? || (user[:next_update] || Time.new(0)) < Time.now
+        logger.debug "Timeout reached on `stars`, refreshing data for user #{user} (#{user_id})."
+        current = tracked.to_a
         tracked = paginate { client.starred(user, data) }.map(&:full_name)
 
         to_add = (tracked - current)
-        to_add.each do |repo_name|
-          repo = find_repository(repo_name).first
-          if repo.nil?
-            logger.debug "Discovered null repo in stars refresh when adding #{repo_name} as part of #{to_add}"
+        to_add = to_add.map do |repo_name|
+          if repo_name.nil?
+            logger.debug "Discovered null repo in stars refresh for #{user} as part of adding #{to_add.count} repositories"
             next
           end
 
-          if repo.empty?
-            refresh_repo(repo)
-            repo = find_repository(repo).first
-          end
+          repo = find_repository(repo_name).select(:id, :slug)
+          refresh_repo(repo_name) if repo.empty?
 
-          logger.debug "Adding tracking of repo #{repo[:slug]} (#{repo[:id]}) for #{user} (#{user_id})"
-          database[:tracked_repositories].insert_conflict(:ignore).insert(tracking_id: user_id, repositories_id: repo[:id])
-        end
+          repo = repo.first
+
+          logger.debug "Adding tracking of repo #{repo[:slug]} (#{repo[:id]}) to user #{user}"
+          repo[:id]
+        end.compact
         to_remove = (current - tracked)
-        to_remove.each do |repo_name|
-          repo = find_repository(repo_name).first
-          if repo.nil?
-            logger.debug "Discovered null repo in stars refresh when removing #{repo_name} as part of #{to_remove}"
+        to_remove = to_remove.map do |repo_name|
+          if repo_name.nil?
+            logger.debug "Discovered null repo in stars refresh for #{user} as part of removing #{to_remove.count} repositories"
             next
           end
 
-          if repo.empty?
-            refresh_repo(repo)
-            repo = find_repository(repo).first
-          end
-          logger.debug "Removing tracking of repo #{repo[:slug]} (#{repo[:id]}) for #{user} (#{user_id})"
-          database[:tracked_repositories].delete(tracking_id: user_id, repositories_id: repo[:id])
-        end
+          repo = find_repository(repo_name).select(:id, :slug)
+          refresh_repo(repo_name) if repo.empty?
 
-        db.update(
-          extradata: { }.to_json,
-          last_update: Time.now,
-          next_update: Time.now + with_stagger(STAR_EXPIRY)
-        )
+          repo = repo.first
+
+          logger.debug "Removing tracking of repo #{repo[:slug]} (#{repo[:id]}) for user #{user}"
+          repo[:id]
+        end.compact
+
+        database.adapter.transaction do
+          to_add.each { |rid| database[:tracked_repositories].insert_conflict(:ignore).insert(tracking_id: user_id, repositories_id: rid) }
+          to_remove.each { |rid| database[:tracked_repositories].delete(tracking_id: user_id, repositories_id: rid) }
+
+          db.update(
+            extradata: { }.to_json,
+            last_update: Time.now,
+            next_update: Time.now + with_stagger(STAR_EXPIRY)
+          )
+        end
 
         return tracked
       end
 
-      tracked = database[:repositories].where(id: database[:tracked_repositories].where(tracking_id: user_id).select(:id)).map { |repo| repo[:slug] }
+      tracked = database[:repositories].where(id: database[:tracked_repositories].where(tracking_id: user_id).select(:repositories_id)).select(:slug).map { |repo| repo[:slug] }
     end
 
     def refresh_repo(repo, data = {})
@@ -120,7 +127,7 @@ module MatrixReleasetracker::Backends
 
       logger.debug "Refreshed metadata for repository #{repo.full_name}"
 
-      db = find_repository(repo.full_name)
+      db = find_repository(repo.full_name).select(:id)
       if db.empty?
         db.insert(
           slug: repo.full_name,
@@ -151,20 +158,20 @@ module MatrixReleasetracker::Backends
       true
     end
 
-    def latest_release(repo, data = {})
-      repo = repo.full_name unless repo.is_a? String
+    def latest_release(repo_name, data = {})
+      repo_name = repo_name.full_name unless repo_name.is_a? String
 
-      logger.debug "Checking latest release for #{repo}"
+      logger.debug "Checking latest release for #{repo_name}"
 
-      db = find_repository(repo)
-      if db.empty? || (db.first[:next_metadata_update] || Time.now) < Time.now
-        refresh_repo(repo, data)
-        db = find_repository(repo)
+      db = find_repository(repo_name)
+      repo = db.select(:id, :slug, :next_metadata_update, :next_update, :extradata).first
+      if repo.nil? || (repo[:next_metadata_update] || Time.new(0)) < Time.now
+        refresh_repo(repo_name, data)
 
         raise 'Failed to find repo data' if db.empty?
       end
 
-      repo = db.first
+      repo = db.select(:id, :slug, :next_metadata_update, :next_update, :extradata).first if repo.nil?
 
       if (repo[:next_update] || Time.new(0)) > Time.now
         latest = find_releases(repositories_id: repo[:id]).order_by(Sequel.desc(:publish_date))
@@ -178,7 +185,7 @@ module MatrixReleasetracker::Backends
         next_update: Time.now + with_stagger(find_releases(repositories_id: repo[:id]).any? ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY)
       )
 
-      extradata = JSON.parse(db.first[:extradata] || '{}')
+      extradata = JSON.parse(repo[:extradata] || '{}')
       allow = extradata.fetch('allow', nil)
       unless allow
         allow = [:lightweight_tag, :tag, :release]
@@ -310,12 +317,12 @@ module MatrixReleasetracker::Backends
       end
     end
 
-    def last_releases(tracked = config[:user])
+    def last_releases(tracked)
       # TODO: Support the other tracking types
       last_user_releases(tracked)
     end
 
-    def last_user_releases(user = config[:user])
+    def last_user_releases(user)
       update_data = lambda do |stars|
         data = { headers: {} }
         ret = {}
@@ -324,7 +331,7 @@ module MatrixReleasetracker::Backends
           latest = latest_release(star, data)
           next if latest.nil?
 
-          repo = find_repository(star).first
+          repo = find_repository(star).select(:id, :slug, :name, :url, :avatar).first
           ret[star] = [latest].compact.map do |rel|
             MatrixReleasetracker::Release.new.tap do |store|
               store.repositories_id = repo[:id]

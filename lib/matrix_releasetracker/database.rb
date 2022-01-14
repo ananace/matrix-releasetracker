@@ -6,8 +6,10 @@ module MatrixReleasetracker
 
     attr_reader :adapter
 
-    def initialize(connection_string)
+    def initialize(connection_string, debug: false)
       @adapter = Sequel.connect(connection_string)
+      adapter.sql_log_level = :debug
+      adapter.loggers << Logging.logger[self] if debug
 
       migrate
     end

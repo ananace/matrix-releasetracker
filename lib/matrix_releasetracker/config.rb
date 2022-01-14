@@ -20,9 +20,11 @@ module MatrixReleasetracker
         MatrixReleasetracker::Client.new config
       end.first
 
-      @database = Database.new([data.fetch(:database, {})].map do |config|
-        config[:connection_string]
-      end.first || 'sqlite://database.db')
+      db_config = {
+        connection_string: 'sqlite://database.db',
+        debug: false
+      }.merge(data.fetch(:database, {}))
+      @database = Database.new(db_config.delete(:connection_string), **db_config)
 
       @backends = Hash[data.fetch(:backends, []).map do |config|
         next unless config.key? :type
