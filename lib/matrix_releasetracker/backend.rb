@@ -5,8 +5,12 @@ module MatrixReleasetracker
         remaining <= requests * 0.05
       end
 
+      def used
+        requests - remaining
+      end
+
       def to_s
-        "#{backend.name}/#{name}: Used #{requests - remaining}/#{requests} (#{(remaining / requests) * 100}%), resets in #{resets_in.to_i} seconds"
+        "#{backend.name}/#{name}: Used #{used}/#{requests} (#{(used / requests) * 100}%), resets in #{resets_in.to_i} seconds"
       end
     end
 
