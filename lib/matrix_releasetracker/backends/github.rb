@@ -161,8 +161,6 @@ module MatrixReleasetracker::Backends
     def latest_release(repo_name, data = {})
       repo_name = repo_name.full_name unless repo_name.is_a? String
 
-      logger.debug "Checking latest release for #{repo_name}"
-
       db = find_repository(repo_name)
       repo = db.select(:id, :slug, :next_metadata_update, :next_update, :extradata).first
       if repo.nil? || (repo[:next_metadata_update] || Time.new(0)) < Time.now
@@ -178,12 +176,7 @@ module MatrixReleasetracker::Backends
         return latest_db.first
       end
 
-      logger.debug "Timeout (#{repo[:next_update]}) reached on `latest_release`, refreshing data for repository #{repo[:slug]}"
-
-      db.update(
-        last_update: Time.now,
-        next_update: Time.now + with_stagger(find_releases(repositories_id: repo[:id]).any? ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY)
-      )
+      logger.debug "Checking latest release for #{repo_name}"
 
       extradata = JSON.parse(repo[:extradata] || '{}')
       allow = extradata.fetch('allow', nil)
@@ -211,6 +204,11 @@ module MatrixReleasetracker::Backends
           type: latest[:type].to_s
         )
       end
+
+      db.update(
+        last_update: Time.now,
+        next_update: Time.now + with_stagger(latest ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY)
+      )
 
       latest_db.first
     rescue Octokit::NotFound
