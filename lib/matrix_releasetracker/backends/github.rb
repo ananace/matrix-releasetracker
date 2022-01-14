@@ -172,10 +172,10 @@ module MatrixReleasetracker::Backends
       end
 
       repo = db.select(:id, :slug, :next_metadata_update, :next_update, :extradata).first if repo.nil?
+      latest_db = find_releases(repositories_id: repo[:id]).order_by(Sequel.desc(:publish_date))
 
       if (repo[:next_update] || Time.new(0)) > Time.now
-        latest = find_releases(repositories_id: repo[:id]).order_by(Sequel.desc(:publish_date))
-        return latest.first
+        return latest_db.first
       end
 
       logger.debug "Timeout (#{repo[:next_update]}) reached on `latest_release`, refreshing data for repository #{repo[:slug]}"
@@ -212,7 +212,7 @@ module MatrixReleasetracker::Backends
         )
       end
 
-      find_releases(repositories_id: repo[:id]).order_by(Sequel.desc(:publish_date)).first
+      latest_db.first
     rescue Octokit::NotFound
       nil
     end
