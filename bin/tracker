@@ -88,8 +88,6 @@ class ReleasetrackerRunner
             # logger.debug "Release #{rel.full_name} #{rel.version_name} (#{rel.release_id}) same as the latest notified one, skipping notice."
             next
           else
-            logger.debug "#{u.object}: Latest release #{rel.full_name} #{rel.version_name} (#{u.id}/#{rel.repositories_id}/#{rel.release_id}} newer than last (if any)."
-
             if Time.now - rel.publish_date > 7 * 24 * 60 * 60
               logger.info "#{u.object}: #{rel.full_name} #{rel.version_name} release was more than 7 days ago (#{rel.publish_date}), skipping notice."
             else
