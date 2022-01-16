@@ -134,16 +134,32 @@ class ReleasetrackerRunner
 
   def ensure_rooms
     logger.info 'Ensuring configured rooms are joined.'
-    config.backends.map { |_k, b| b.users.map { |u| u.room_id } }.flatten.uniq.each do |room|
-      api.join_room(room.to_s)
+    config.backends.map { |_k, b| [b, b.users.map { |u| u.room_id }] }.each do |backend, rooms|
+      rooms.each do |room|
+        in_room = false
+        begin
+          api.join_room(room.to_s)
+          in_room = true
+        rescue MatrixSdk::MatrixNotFoundError => ex
+          logger.info "Received #{ex.class}: #{ex}"
+        rescue MatrixSdk::MatrixForbiddenError => ex
+          logger.info "Received #{ex.class}: #{ex}"
+          # Not in room
+        end
 
-      users = api.get_room_members(room)[:chunk].select { |c| c[:content][:membership] == 'join' }
-      next if users.count > 1
+        if in_room
+          users = api.get_room_members(room)[:chunk].select { |c| c[:content][:membership] == 'join' }
+          next if users.count > 1
 
-      logger.info "Room #{room} is empty, leaving."
-      config.client.users.delete_if { |u| u[:room] == room }
+          logger.info "Room #{room} is empty, leaving."
 
-      api.leave_room(room)
+          api.leave_room(room.to_s)
+        else
+          logger.info "Not in room #{room}, removing."
+        end
+
+        backend.remove_user(backend.users.find { |u| u.room_id == room }.object)
+      end
     end
   end
 

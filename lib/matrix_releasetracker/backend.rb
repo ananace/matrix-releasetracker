@@ -56,6 +56,12 @@ module MatrixReleasetracker
       u
     end
 
+    def remove_user(name)
+      find_tracking(name, type: 'user').delete
+      @users = nil
+    end
+
+
     def last_releases(_user)
       raise NotImplementedException
     end
