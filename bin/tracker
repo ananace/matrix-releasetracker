@@ -121,6 +121,8 @@ class ReleasetrackerRunner
     old = Time.now - (14 * 24 * 60 * 60) # two weeks
     config.database[:releases].where{ publish_date < old }.delete
 
+    config.database[:repositories].exclude(id: config.database[:tracked_repositories].select(:repositories_id)).delete
+
     next_cleanup = Time.now + with_stagger(24 * 60 * 60, 0.25)
     config.database[:meta].insert_conflict(:replace).insert(
       key: 'next_cleanup',
