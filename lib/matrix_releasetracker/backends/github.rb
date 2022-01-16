@@ -405,8 +405,10 @@ module MatrixReleasetracker::Backends
 
     def gql_client
       @gql_client ||= use_stack(if config.key?(:access_token)
+                                  logger.debug "GQL: Using access token"
                                   Octokit::Client.new access_token: config[:access_token]
                                 elsif config.key?(:login) && config.key?(:password)
+                                  logger.debug "GQL: Using login"
                                   Octokit::Client.new login: config[:login], password: config[:password]
                                 else
                                   raise ArgumentError, 'GraphQL access on the GitHub API requires account access'
@@ -415,12 +417,16 @@ module MatrixReleasetracker::Backends
 
     def client
       @client ||= use_stack(if config.key?(:client_id) && config.key?(:client_secret)
+                              logger.debug "REST: Using OAuth"
                               Octokit::Client.new client_id: config[:client_id], client_secret: config[:client_secret]
                             elsif config.key?(:access_token)
+                              logger.debug "REST: Using access token"
                               Octokit::Client.new access_token: config[:access_token]
                             elsif config.key?(:login) && config.key?(:password)
+                              logger.debug "REST: Using login"
                               Octokit::Client.new login: config[:login], password: config[:password]
                             else
+                              logger.debug "REST: Using no authorization"
                               Octokit::Client.new
                             end)
     end
