@@ -1,0 +1,26 @@
+---
+:backends:
+- :access_token: 'GitHub Personal Access Token'
+  :type: :github
+
+  # Or use OAuth authentication;
+  #:client_id: OAuth ClientID
+  #:client_secret: OAuth ClientSecret
+
+  # Or (very not recommended) user login;
+  #:login: GitHub Username
+  #:password: GitHub Password
+
+:client:
+  :hs_url: https://matrix.example.com
+  :access_token: Bot account access_token
+
+  # Any other MatrixSdk parameters can also be set;
+  #:device_id: Some descriptive device id
+  #:read_timeout: 600
+  #:transaction_id: 9001
+
+:database: {}
+  # You can also specify the connection string
+  #:connection_string: sqlite://database.db
+  #:debug: false
