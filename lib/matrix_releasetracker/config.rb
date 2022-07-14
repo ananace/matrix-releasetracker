@@ -17,7 +17,7 @@ module MatrixReleasetracker
       data = Psych.load File.read(filename)
 
       @client = [data.fetch(:client, {})].map do |config|
-        MatrixReleasetracker::Client.new config
+        MatrixReleasetracker::Client.new config: self, **config
       end.first
 
       db_config = {
@@ -39,6 +39,8 @@ module MatrixReleasetracker
       end]
 
       @media = @database[:media]
+
+      @client.reload!
 
       true
     end

@@ -21,7 +21,7 @@ module MatrixReleasetracker::Backends
     def rate_limit
       limit = client.rate_limit
 
-      RateLimit.new(self, 'REST', limit.limit, limit.remaining, limit.resets_at, limit.resets_in)
+      Structs::RateLimit.new(self, 'REST', limit.limit, limit.remaining, limit.resets_at, limit.resets_in)
     end
 
     def rate_limits
@@ -36,8 +36,8 @@ module MatrixReleasetracker::Backends
       graphql_limit = result.data.rateLimit
 
       [
-        RateLimit.new(self, 'REST', rest_limit.limit, rest_limit.remaining, rest_limit.resets_at, rest_limit.resets_in),
-        RateLimit.new(self, 'GraphQL', graphql_limit.limit, graphql_limit.remaining, Time.parse(graphql_limit.resetAt), Time.parse(graphql_limit.resetAt) - Time.now)
+        Structs::RateLimit.new(self, 'REST', rest_limit.limit, rest_limit.remaining, rest_limit.resets_at, rest_limit.resets_in),
+        Structs::RateLimit.new(self, 'GraphQL', graphql_limit.limit, graphql_limit.remaining, Time.parse(graphql_limit.resetAt), Time.parse(graphql_limit.resetAt) - Time.now)
       ]
     end
 
@@ -107,7 +107,7 @@ module MatrixReleasetracker::Backends
 
         database.adapter.transaction do
           to_add.each { |rid| database[:tracked_repositories].insert_conflict(:ignore).insert(tracking_id: user_id, repositories_id: rid) }
-          to_remove.each { |rid| database[:tracked_repositories].delete(tracking_id: user_id, repositories_id: rid) }
+          to_remove.each { |rid| database[:tracked_repositories].where(tracking_id: user_id, repositories_id: rid).delete() }
 
           db.update(
             extradata: { }.to_json,

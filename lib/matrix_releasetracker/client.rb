@@ -1,36 +1,39 @@
+# frozen_string_literal: true
+
 require 'base64'
 require 'json'
 require 'zlib'
 require 'matrix_sdk'
+require 'matrix_sdk/errors'
 
 module MatrixReleasetracker
   class Client
-    ACCOUNT_DATA_KEY = 'com.github.ananace.RequestTracker.data'.freeze
+    ACCOUNT_DATA_KEY = 'com.github.ananace.RequestTracker.data'
+    ROOM_STATE_KEY = 'dev.ananace.ReleaseTracker'
     ACCOUNT_DATA_FILTER = {
       presence: { types: [] },
       account_data: { limit: 1, types: [ACCOUNT_DATA_KEY] },
       room: {
         rooms: [],
         ephemeral: { types: [] },
-        state: { types: [] },
+        state: { types: [ROOM_STATE_KEY] },
         timeline: { types: [] },
         account_data: { limit: 1, types: [ACCOUNT_DATA_KEY] }
       }
     }.freeze
 
-    attr_reader :api, :data
+    attr_reader :client, :config, :api, :data, :room_data
 
-    def initialize(configuration)
+    def initialize(config:, **configuration)
+      @config = config
       @use_sync = configuration.delete(:use_sync) { false }
-      @api = MatrixSdk::Api.new configuration.delete(:hs_url), configuration
+      @client = MatrixSdk::Client.new configuration.delete(:hs_url), configuration
+      @api = client.api
       @data = {}
       @room_data = {}
 
-      begin
-        @user = api.whoami? # TODO: @api.logged_in?
-        reload!
-      rescue MatrixSdk::MatrixRequestError => ex
-        raise ex if ex.httpstatus != 401
+      client.on_state_event.add_handler(ROOM_STATE_KEY) do |state|
+        set_room_data(state[:room_id], state[:content])
       end
     end
 
@@ -46,19 +49,9 @@ module MatrixReleasetracker
       data[:next_batch] = batch
     end
 
-    def clear_room_data(room_id)
-      # TODO
-    end
-
-    def room_data(room_id)
-      @room_data[room_id] ||= api.get_room_account_data(@user.user_id, room_id, ACCOUNT_DATA_KEY)
-    rescue MatrixSdk::MatrixRequestError => e
-      raise e unless e.code == 'M_NOT_FOUND'
-
-      @room_data[room_id] ||= {}
-    end
-
     def reload!
+      @user ||= client.mxid
+
       if @use_sync
         reload_with_sync
       else
@@ -67,15 +60,63 @@ module MatrixReleasetracker
 
       @data.delete :users
 
-      api.get_joined_rooms.joined_rooms.each do |room_id|
+      client.rooms.each do |room|
         begin
-          @room_data[room_id] = api.get_room_account_data(@user.user_id, room_id, ACCOUNT_DATA_KEY)
+          new_room_data = api.get_room_state(room.id, ROOM_STATE_KEY)
+          set_room_data(room, new_room_data)
         rescue MatrixSdk::MatrixRequestError => e
           raise e unless e.code == 'M_NOT_FOUND'
         end
       end
 
       true
+    end
+
+    def set_room_data(room_id, data)
+      room_id = room_id.id.to_s if room_id.is_a? MatrixSdk::Room
+      room_id = room_id.to_s if room_id.is_a? MatrixSdk::MXID
+
+      # {
+      #   "tracking": [
+      #     {
+      #       "backend": "github",
+      #       "type": "user", # stars
+      #       "object": "username"
+      #     },
+      #     {
+      #       "backend": "github",
+      #       "type": "repository", # single repo
+      #       "object": "repository"
+      #     },
+      #     {
+      #       "backend": "github",
+      #       "type": "group", # repos under a namespace
+      #       "object": "organization/user"
+      #     }
+      #   ]
+      # }
+      
+      logger.debug "Updating room #{room_id} data with #{data.inspect}"
+      tracked = data[:tracking].map { |object|
+        if (%[backend type object] - object.keys).any?
+          logger.warn "Tracking object #{object} is missing required keys"
+          next
+        end
+
+        backend = config.backends[object[:backend].to_sym]
+        if backend
+          object.delete :backend
+          Structs::Tracking.new_from_state(room_id: room_id, backend: backend, object: object[:object])
+        else
+          logger.warn "Unknown backend #{backend.inspect} for #{object} in room #{room_id}"
+        end
+      }
+
+      # TODO: Update backends
+
+      @room_data[room_id] = tracked
+    rescue StandardError => ex
+      logger.error "Failed to store room data for #{room_id}, #{ex.class}: #{ex}"
     end
 
     def save!
@@ -111,7 +152,7 @@ module MatrixReleasetracker
     end
 
     def reload_with_get
-      @data = api.request(:get, :client_r0, "/user/#{@user.user_id}/account_data/#{ACCOUNT_DATA_KEY}")
+      @data = api.request(:get, :client_r0, "/user/#{@user}/account_data/#{ACCOUNT_DATA_KEY}")
     rescue MatrixSdk::MatrixNotFoundError # rubocop:disable Lint/HandleExceptions
       # Not an error
     rescue MatrixSdk::MatrixRequestError => e

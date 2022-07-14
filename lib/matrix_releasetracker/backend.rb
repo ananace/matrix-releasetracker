@@ -1,19 +1,5 @@
 module MatrixReleasetracker
   class Backend
-    RateLimit = Struct.new('RateLimit', :backend, :name, :requests, :remaining, :resets_at, :resets_in) do
-      def near_limit
-        remaining <= requests * 0.05
-      end
-
-      def used
-        requests - remaining
-      end
-
-      def to_s
-        "#{backend.name}/#{name}: Used #{used}/#{requests} (#{(used / requests) * 100}%), resets in #{resets_in.to_i} seconds"
-      end
-    end
-
     def initialize(config, client)
       @config = config
       @m_client = client
@@ -31,14 +17,11 @@ module MatrixReleasetracker
       self.class.name.split(':').last
     end
 
+
     def users
       @users ||= database[:tracking].where(type: 'user', backend: db_type).map do |t|
         Structs::User.new t.merge(backend: self)
       end
-
-      # @repos = tracking.where(type: 'repo').map do |t|
-      #   Structs::Repo.new t[:object], t[:room_id], t[:backend], t[:last_update], t[:extradata]
-      # end
     end
 
     def add_user(name, **data)
@@ -59,6 +42,26 @@ module MatrixReleasetracker
     def remove_user(name)
       find_tracking(name, type: 'user').delete
       @users = nil
+    end
+
+
+    def get_tracking(object:, type:, **attributes)
+      database[:tracking].where(object: object, type: type.to_s, **attributes).first
+    end
+
+    def get_tracking_by_id(id)
+      database[:tracking].where(id: id, backend: db_type).first
+    end
+
+
+    def get_all_tracked_by_type(type, room_id: nil)
+      res = if room_id
+              database[:tracking].where(type: type.to_s, backend: db_type, room_id: room_id)
+            else
+              database[:tracking].where(type: type.to_s, backend: db_type)
+            end
+
+      res.map { |obj| Structs::Tracking.new_from_state(**obj) }
     end
 
 
@@ -101,6 +104,7 @@ module MatrixReleasetracker
 
     def find_tracking(name, **filters)
       raise 'Using old :type param' if filters[:type] == 'repository'
+
       database[:tracking].where(filters.merge(object: name, backend: db_type))
     end
 
