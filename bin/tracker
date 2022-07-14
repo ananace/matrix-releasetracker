@@ -21,19 +21,21 @@ ROOM_STATE_FILTER = {
 
 class ReleasetrackerRunner
   attr_accessor :running
-  attr_reader :logger, :config, :options, :api
+  attr_reader :logger, :config, :options, :client, :api
 
   def initialize(**options)
     @options = options
-    @logger = Logging.logger['MatrixReleasetracker'].tap do |log|
-      log.add_appenders Logging.appenders.stderr(
+    @config = MatrixReleasetracker::Config.load! options[:config]
+    @logger ||= Logging.logger[self].tap do |log|
+      log.add_appenders Logging.appenders.stdout(
         layout: Logging::Layouts.pattern(pattern: "[%d|%.1l] %c: %m\n", date_pattern: '%F %T')
       )
-      log.level = options[:loglevel]
     end
-    @config = MatrixReleasetracker::Config.load! options[:config]
+    @logger.level = options[:debug] ? :debug : :info
+
     logger.info 'Loaded configuration.'
 
+    @client = config.client.client
     @api = config.client.api
   end
 
@@ -70,31 +72,42 @@ class ReleasetrackerRunner
 
   def update_backends
     config.backends.each do |_k, b|
-      logger.info "Polling backend #{b.name} with #{b.users.count} users..."
-      b.users.each do |u|
-        repos = b.stars(u.object)
-        releases = b.last_releases(u.object)
-        logger.info "Tracking #{repos.count} repositories - #{releases[:releases].count} with releases, for #{u.object}."
+      logger.info "Polling backend #{b.name} with #{b.tracking.count} tracked..."
+      b.tracking.each do |obj|
+        logger.debug "Working on #{obj}..."
 
-        releases[:releases].each do |_name, rel|
-          next if rel.nil?
+        releases = b.last_releases(obj)
+        repos = b.get_all_repositories_for(obj)
+        logger.info "Tracking #{repos.count} repositories - #{releases[:releases].count} with releases, for #{obj}."
 
-          if config.database[:tracked_repositories].where(tracking_id: u.id, repositories_id: rel.repositories_id).empty?
-            logger.debug "#{u.object}: Got latest release for untracked repo #{rel.full_name} for user #{u.object}, skipping."
+        releases[:releases].each do |rel|
+          if rel.nil?
+            logger.debug "#{obj}: Found nil release, skipping."
             next
           end
 
-          if config.database[:latest_releases].where(tracking_id: u.id, repositories_id: rel.repositories_id, releases_id: rel.release_id).any?
-            # logger.debug "Release #{rel.full_name} #{rel.version_name} (#{rel.release_id}) same as the latest notified one, skipping notice."
+          if config.database[:tracked_repositories].where(tracking_id: obj.id, repositories_id: rel.repositories_id).empty?
+            logger.debug "#{obj}: Latest release is for untracked repo #{rel.full_name}, skipping."
+            next
+          end
+
+          if config.database[:latest_releases].where(tracking_id: obj.id, repositories_id: rel.repositories_id, releases_id: rel.release_id).any?
+            # logger.debug "#{obj}: Release #{rel.full_name} #{rel.version_name} (#{rel.release_id}) same as the latest notified one, skipping notice."
             next
           else
             if Time.now - rel.publish_date > 7 * 24 * 60 * 60
-              logger.info "#{u.object}: #{rel.full_name} #{rel.version_name} release was more than 7 days ago (#{rel.publish_date}), skipping notice."
+              logger.info "#{obj}: #{rel.full_name} #{rel.version_name} release was more than 7 days ago (#{rel.publish_date}), skipping notice."
             else
-              logger.info "#{u.object}: Posting notice about #{rel.full_name} #{rel.version_name}"
+              logger.info "#{obj}: Posting notice about #{rel.full_name} #{rel.version_name}"
+
+              if obj.extradata
+                rel.max_lines = obj.extradata[:max_lines] if obj.extradata.key? :max_lines
+                rel.max_chars = obj.extradata[:max_chars] if obj.extradata.key? :max_chars
+              end
+
               rel.avatar_url = fix_media_url(rel.avatar_url) if rel.avatar_url
               api.send_message_event(
-                u.room_id,
+                obj.room_id,
                 'm.room.message',
                 msgtype: 'm.notice',
                 body: rel.to_s(:markdown),
@@ -104,7 +117,9 @@ class ReleasetrackerRunner
             end
           end
 
-          config.database[:latest_releases].insert_conflict(:replace).insert(tracking_id: u.id, repositories_id: rel.repositories_id, releases_id: rel.release_id)
+          config.database[:latest_releases]
+                .insert_conflict(:replace)
+                .insert(tracking_id: obj.id, repositories_id: rel.repositories_id, releases_id: rel.release_id)
         rescue StandardError => e
           logger.error "Failed to post notice, #{e.class}: #{e}\n#{e.backtrace[0..10].join("\n")}"
         end
@@ -119,7 +134,7 @@ class ReleasetrackerRunner
     logger.info 'Cleaning up old data...'
 
     old = Time.now - (14 * 24 * 60 * 60) # two weeks
-    config.database[:releases].where{ publish_date < old }.delete
+    config.database[:releases].where { publish_date < old }.delete
 
     config.database[:repositories].exclude(id: config.database[:tracked_repositories].select(:repositories_id)).delete
 
@@ -136,79 +151,43 @@ class ReleasetrackerRunner
 
   def ensure_rooms
     logger.info 'Ensuring configured rooms are joined.'
-    config.backends.map { |_k, b| [b, b.users.map { |u| u.room_id }] }.each do |backend, rooms|
-      rooms.each do |room|
-        in_room = false
-        begin
-          api.join_room(room.to_s)
-          in_room = true
-        rescue MatrixSdk::MatrixNotFoundError => ex
-          logger.info "Received #{ex.class}: #{ex}"
-        rescue MatrixSdk::MatrixForbiddenError => ex
-          logger.info "Received #{ex.class}: #{ex}"
-          # Not in room
-        end
+    config.backends.map { |_k, b| b.tracking }.flatten.each do |track|
+      room = track.room_id
 
-        if in_room
-          users = api.get_room_members(room)[:chunk].select { |c| c[:content][:membership] == 'join' }
-          next if users.count > 1
-
-          logger.info "Room #{room} is empty, leaving."
-
-          api.leave_room(room.to_s)
-        else
-          logger.info "Not in room #{room}, removing."
-        end
-
-        backend.remove_user(backend.users.find { |u| u.room_id == room }.object)
+      in_room = false
+      begin
+        api.join_room(room.to_s)
+        in_room = true
+      rescue MatrixSdk::MatrixNotFoundError => ex
+        logger.info "Received #{ex.class}: #{ex}"
+      rescue MatrixSdk::MatrixForbiddenError => ex
+        logger.info "Received #{ex.class}: #{ex}"
+        # Not in room
       end
+
+      if in_room
+        users = api.get_room_members(room)[:chunk].select { |c| c[:content][:membership] == 'join' }
+        next if users.count > 1
+
+        logger.info "Room #{room} is empty, leaving."
+
+        api.leave_room(room.to_s)
+      else
+        logger.info "Not in room #{room}, removing."
+      end
+
+      tracking.remove_track
     end
   end
 
   def matrix_thread
     logger.info 'Starting Matrix sync loop...'
+    client.sync_filter = ROOM_STATE_FILTER
     while running do
       begin
-        api.sync(timeout: 10.0, set_presence: :offline, since: config.client.next_batch, filter: ROOM_STATE_FILTER.to_json).tap do |data|
-          config.client.next_batch = data[:next_batch]
+        client.sync(timeout: 10.0, set_presence: :offline, since: config.client.next_batch)
 
-          data.dig(:rooms, :invite)&.each do |room_id, _invite|
-            logger.info "Invited to #{room_id}."
-
-            next if config.backends.map { |_k, b| b.users.map { |u| u.room_id } }.flatten.uniq.count > 50
-
-            logger.info "Joining #{room_id}."
-            api.join_room(room_id.to_s)
-          end
-
-          data.dig(:rooms, :join)&.each do |room_id, join|
-            join.dig(:timeline, :events)&.select { |ev| ev[:type] == 'm.room.message' && ev[:content] && ev[:content][:msgtype] == 'm.text' }.each do |message|
-              logger.info "#{message[:sender]} in #{room_id}: #{message[:content][:body]}"
-
-              next unless message[:content][:body].start_with? '!github '
-              next unless config.backends.keys.include? :github
-
-              users = api.get_room_members(room_id)[:chunk].select { |c| c[:content][:membership] == 'join' }
-              next if users.count > 2
-
-              backend = config.backends[:github]
-              user = backend.users.find { |u| u.room_id == room_id.to_s }
-
-              gh_name = message[:content][:body][8..-1].downcase
-              next if user && user.object == gh_name
-
-              if user
-                backend.update_user(user.object, object: gh_name)
-              else
-                backend.add_user(gh_name, { room_id: room_id.to_s })
-              end
-
-              logger.info "Now tracking GitHub user '#{gh_name}' in #{room_id}"
-              api.send_notice(room_id.to_s, "Now tracking GitHub user '#{gh_name}'")
-            end
-          end
-        end
-
+        config.client.next_batch = client.next_batch
         config.save!
 
         sleep 10
@@ -279,7 +258,7 @@ end
 if $PROGRAM_NAME == __FILE__
   options = {
     config: 'releasetracker.yml',
-    loglevel: :info,
+    debug: false,
     sdk_debug: false
   }
 
@@ -295,7 +274,7 @@ if $PROGRAM_NAME == __FILE__
     end
 
     opts.on('-v', '--verbose', 'use verbose output') do
-      options[:loglevel] = :debug
+      options[:debug] = true
     end
 
     opts.on('-h', '--help', 'show this text') do
@@ -305,6 +284,7 @@ if $PROGRAM_NAME == __FILE__
   end
   opts_parser.parse!
 
+  MatrixReleasetracker.debug! if options[:debug]
   MatrixSdk.debug! if options.delete :sdk_debug
 
   runner = ReleasetrackerRunner.new(**options)

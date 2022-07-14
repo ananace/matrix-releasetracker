@@ -17,7 +17,7 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
 
   spec.add_dependency 'faraday-http-cache'
-  # spec.add_dependency 'gitlab'
+  # spec.add_dependency 'gitlab', '~> 4'
   spec.add_dependency 'kramdown'
   spec.add_dependency 'logging', '~> 2'
   spec.add_dependency 'matrix_sdk', '~> 2'

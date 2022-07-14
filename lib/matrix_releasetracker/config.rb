@@ -34,8 +34,9 @@ module MatrixReleasetracker
         next if backend.nil?
 
         config[:database] = @database
+        config[:client] = @client
 
-        [type, MatrixReleasetracker::Backends.const_get(backend).new(config, @client)]
+        [type, MatrixReleasetracker::Backends.const_get(backend).new(config)]
       end]
 
       @media = @database[:media]

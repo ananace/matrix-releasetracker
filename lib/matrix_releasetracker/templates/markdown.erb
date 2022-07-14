@@ -6,13 +6,13 @@
                  when :tag
                    'was tagged'
                  when :lightweight_tag
-                   'got a lightweight tag on'
+                   'got a lightweight tag'
                  else
                    'released'
                  end
 -%>
-#### [<%= avatar_str %> <%= full_name %>](<%= repo_url %>) [<%= version %>](<%= release_url %>)
-[<%= version_name %> <%= publish_type %> <%= publish_date_str %>](<%= release_url %>)
+#### [<%= avatar_str %> <%= full_name %>](<%= repo_url %>)
+[<%= version_name %> <%= publish_type %> at <%= publish_date_str %>](<%= release_url %>)
 <%- unless release_notes.nil? || release_notes.empty? %>
 ---
 <%= trimmed_release_notes %><%= release_note_overflow %>

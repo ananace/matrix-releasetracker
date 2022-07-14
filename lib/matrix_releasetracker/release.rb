@@ -6,11 +6,15 @@ module MatrixReleasetracker
   class Release
     attr_accessor :namespace, :name, :version, :commit_sha, :publish_date, :release_notes, :repo_url, :release_url, :avatar_url, :release_type
     attr_accessor :repositories_id, :release_id
+    attr_accessor :max_lines, :max_chars
     attr_writer :version_name
 
     def initialize
       @plain_template = File.join File.expand_path('templates', __dir__), 'plain.erb'
       @markdown_template = File.join File.expand_path('templates', __dir__), 'markdown.erb'
+
+      @max_lines = 10
+      @max_chars = 512
     end
 
     def to_s
@@ -85,8 +89,8 @@ module MatrixReleasetracker
     def trimmed_release_notes
       trimmed_release_notes = release_notes
       unless trimmed_release_notes.nil? || trimmed_release_notes.empty?
-        trimmed_release_notes = trimmed_release_notes.split("\n")[0, 10].map(&:rstrip).join "\n"
-        trimmed_release_notes = trimmed_release_notes[0, 512] if trimmed_release_notes.length > 512
+        trimmed_release_notes = trimmed_release_notes.split("\n")[0, max_lines].map(&:rstrip).join "\n"
+        trimmed_release_notes = trimmed_release_notes[0, max_chars] if trimmed_release_notes.length > max_chars
       end
       trimmed_release_notes
     end
@@ -101,8 +105,11 @@ require 'kramdown'
 module Kramdown
   class Converter::HtmlExtended < Converter::Html
     def convert_img(ele, indent)
-      ele.attr['height'] = '32'
-      ele.attr['width'] = '32'
+      if ele.attr['alt'] == 'avatar'
+        ele.attr['height'] = '32'
+        ele.attr['width'] = '32'
+      end
+
       super(ele, indent)
     end
   end

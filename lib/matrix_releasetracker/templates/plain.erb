@@ -10,6 +10,8 @@
                    'released'
                  end
 -%>
-<%= full_name %> <%= publish_type %> <%= version %> on <%= publish_date_str %> (<%= release_url %>)<%- unless release_notes.nil? || release_notes.empty? -%>
-<%= release_notes -%>
+<%= full_name %> <%= publish_type %> <%= version_name %> on <%= publish_date_str %> (<%= release_url %>)<%- unless release_notes.nil? || release_notes.empty? -%>
+<%- unless release_notes.nil? || release_notes.empty? %>
+<%= trimmed_release_notes %><%= release_note_overflow %>
+<%- end -%>
 <%- end -%>
