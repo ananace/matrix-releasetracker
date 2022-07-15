@@ -17,13 +17,18 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
 
   spec.add_dependency 'faraday-http-cache'
-  spec.add_dependency 'gitlab'
+  # spec.add_dependency 'gitlab', '~> 4'
   spec.add_dependency 'kramdown'
   spec.add_dependency 'logging', '~> 2'
-  spec.add_dependency 'matrix_sdk'
-  spec.add_dependency 'octokit', '~> 4.0'
+  spec.add_dependency 'matrix_sdk', '~> 2'
+  spec.add_dependency 'octokit', '~> 4.16'
+  spec.add_dependency 'sequel', '~> 5.51'
 
-  spec.add_development_dependency 'bundler'
-  spec.add_development_dependency 'minitest'
-  spec.add_development_dependency 'rake'
+  # TODO: Gem groups
+  spec.add_dependency 'sqlite3', '~> 1.4' # SQLite
+  spec.add_dependency 'pg', '~> 1.2'      # PostgreSQL
+
+  spec.add_development_dependency 'bundler', '>= 1', '< 3'
+  spec.add_development_dependency 'minitest', '~> 5'
+  spec.add_development_dependency 'rake', '~> 10'
 end

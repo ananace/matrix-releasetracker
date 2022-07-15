@@ -6,38 +6,7 @@ require 'tmpdir'
 
 module MatrixReleasetracker::Backends
   class Github < MatrixReleasetracker::Backend
-    STAR_EXPIRY = 1 * 24 * 60 * 60
-    RELEASE_EXPIRY = 1 * 60 * 60
-    TAGS_RELEASE_EXPIRY = 2 * 60 * 60
-    NIL_RELEASE_EXPIRY = 1 * 24 * 60 * 60
-    REPODATA_EXPIRY = 2 * 24 * 60 * 60
-
-    InternalRelease = Struct.new(:tag_name, :name, :date, :url, :description, :type)
-
-    def post_load
-      super
-
-      return unless config.key? :tracked
-
-      # Clean up old configuration junk
-      config[:tracked][:users].each { |_k, u| %i[last_check next_check].each { |v| u.delete v } }
-      config[:tracked][:users].delete_if { |_k, u| u.empty? }
-      config[:tracked].delete :users if config[:tracked][:users].empty?
-
-      config[:tracked][:repos].each { |_k, r| %i[latest next_data_sync next_check full_name name html_url avatar_url].each { |v| r.delete v } }
-      config[:tracked][:repos].each { |_k, r| r.delete :allow if r[:allow].is_a? Symbol }
-      config[:tracked][:repos].delete_if { |_k, r| r.empty? }
-      config[:tracked].delete :repos if config[:tracked][:repos].empty?
-
-      config.delete :tracked if config[:tracked].empty?
-    end
-
-    def post_update
-      super
-
-      # Remove empty repos from tracked config
-      config[:tracked].delete :repos if config[:tracked][:repos].empty?
-    end
+    InternalRelease = Struct.new(:sha, :tag_name, :name, :date, :url, :description, :type)
 
     def name
       'GitHub'
@@ -46,7 +15,7 @@ module MatrixReleasetracker::Backends
     def rate_limit
       limit = client.rate_limit
 
-      RateLimit.new(self, limit.limit, limit.remaining, limit.resets_at, limit.resets_in)
+      MatrixReleasetracker::Structs::RateLimit.new(self, 'REST', limit.limit, limit.remaining, limit.resets_at, limit.resets_in)
     end
 
     def rate_limits
@@ -61,77 +30,59 @@ module MatrixReleasetracker::Backends
       graphql_limit = result.data.rateLimit
 
       [
-        RateLimit.new(self, 'REST', rest_limit.limit, rest_limit.remaining, rest_limit.resets_at, rest_limit.resets_in),
-        RateLimit.new(self, 'GraphQL', graphql_limit.limit, graphql_limit.remaining, Time.parse(graphql_limit.resetAt), Time.parse(graphql_limit.resetAt) - Time.now)
+        MatrixReleasetracker::Structs::RateLimit.new(self, 'REST', rest_limit.limit, rest_limit.remaining, rest_limit.resets_at, rest_limit.resets_in),
+        MatrixReleasetracker::Structs::RateLimit.new(self, 'GraphQL', graphql_limit.limit, graphql_limit.remaining, Time.parse(graphql_limit.resetAt), Time.parse(graphql_limit.resetAt) - Time.now)
       ]
     end
 
-    def all_stars(data = {})
-      raise NotImplementedException
-      users.each do |u|
-        stars(u, data).each do |repo|
-          # refresh_repo(repo)
-        end
-      end
+    protected
 
-      # persistent_repos.values
+    # Backend implementations
+    def find_group_repositories(group_name, data = {})
+      paginate { client.list_repos(group_name, data) }.map(&:full_name).sort
     end
 
-    def stars(user, data = {})
-      user = user.name unless user.is_a? String
-      puser = persistent_user(user)
-      euser = ephemeral_user(user)
-
-      next_check = puser[:next_check] || Time.now
-      next_check = Time.parse(next_check.to_s) unless next_check.is_a? Time
-      return puser[:repos] if puser[:repos] && (next_check || Time.new(0)) > Time.now
-      logger.debug "Timeout (#{puser[:next_check]}) reached on `stars`, refreshing data for user #{user}."
-
-      tracked = paginate { client.starred(user, data) }
-      puser[:repos] = tracked.map(&:full_name)
-      puser[:next_check] = Time.now + with_stagger(STAR_EXPIRY)
-
-      puser[:repos]
+    def find_user_repositories(user_name, **data)
+      paginate { client.starred(user_name, data) }.map(&:full_name).sort
     end
 
-    def refresh_repo(repo, data = {})
-      if repo.is_a? String
-        prepo = persistent_repo(repo)
-        erepo = ephemeral_repo(repo)
-        repo = client.repository(repo, data)
-      end
+    def find_repo_information(repo_name, **data)
+      repo = client.repository(repo_name, data)
 
-      logger.debug "Forced refresh of stored data for repository #{repo.full_name}"
+      avatar = URI(repo.avatar_url || repo.owner.avatar_url || 'https://avatars1.githubusercontent.com/u/9919')
+      avatar.query += '&s=32'
+      avatar.query.gsub!(/^&/, '')
 
-      prepo ||= persistent_repo(repo.full_name)
-      erepo ||= ephemeral_repo(repo.full_name)
-
-      erepo.merge!(
-        avatar_url: repo.owner.avatar_url,
+      {
         full_name: repo.full_name,
         name: repo.name,
-        html_url: repo.html_url
-      )
-      erepo.merge!(
-        next_data_sync: Time.now + with_stagger(REPODATA_EXPIRY)
-      )
-
-      true
+        namespace: repo.namespace,
+        html_url: repo.html_url,
+        avatar_url: avatar.to_s
+      }
     end
 
-    def latest_release(repo, data = {})
-      repo = repo.full_name unless repo.is_a? String
-      prepo = persistent_repo(repo)
-      erepo = ephemeral_repo(repo)
+    def find_repo_releases(repo, **data)
+      extradata = JSON.parse(repo[:extradata] || '{}')
+      allow = extradata.fetch('allow', nil)
+      unless allow
+        allow = [:lightweight_tag, :tag, :release]
+        extradata['allow'] = allow 
+      end
 
-      logger.debug "Checking latest release for #{repo}"
+      if gql_available?
+        find_gql_releases(repo[:slug]).select { |r| allow.include? r[:type] }
+      elsif allow.include? :release
+        find_rest_releases(repo[:slug])
+      end
+    rescue Octokit::NotFound
+      nil
+    end
 
-      refresh_repo(repo, data) unless (erepo.keys & %i[full_name name html_url]).count == 3
-      refresh_repo(repo, data) if (erepo[:next_data_sync] ||= Time.now) < Time.now
+    private
 
-      return erepo[:latest] if (erepo[:next_check] || Time.new(0)) > Time.now
-      logger.debug "Timeout (#{erepo[:next_check]}) reached on `latest_release`, refreshing data for repository #{repo}"
-
+    # Internal queries
+    def find_gql_releases(repo)
       graphql = <<~GQL
         query {
           repository(owner:"#{repo.split('/').first}", name:"#{repo.split('/').last}") {
@@ -139,6 +90,11 @@ module MatrixReleasetracker::Backends
             releases(first: 5, orderBy: { field: CREATED_AT, direction: DESC }) {
               nodes {
                 tagName
+                tag {
+                  target {
+                    oid
+                  }
+                }
                 name
                 createdAt
                 url
@@ -152,6 +108,7 @@ module MatrixReleasetracker::Backends
                 name
                 target {
                   __typename
+                  oid
                   ... on Commit {
                     committedDate
                     pushedDate
@@ -170,115 +127,62 @@ module MatrixReleasetracker::Backends
         }
       GQL
 
-      allow = prepo.fetch(:allow, nil)
-      allow = [:lightweight_tag, :tag, :release] unless allow.is_a? Array
-
-      erepo[:last_check] = Time.now
-      erepo[:next_check] = Time.now + with_stagger(erepo[:latest] ? RELEASE_EXPIRY : NIL_RELEASE_EXPIRY)
-
       result = gql_client.post '/graphql', { query: graphql }.to_json
 
       releases = result.data.repository.releases.nodes.map do |release|
         type = release.isPrerelease ? :prerelease : :release
-        InternalRelease.new(release.tagName, release.name, Time.parse(release.createdAt), release.url, release.description, type)
+        InternalRelease.new(release.tag&.target&.oid, release.tagName, release.name, Time.parse(release.createdAt), release.url, release.description, type)
       end.group_by(&:tag_name)
 
       result.data.repository.refs.nodes.each do |tag|
         next if releases.key? tag.name
 
-        url = "https://github.com/#{repo}/releases/tag/#{tag.name}"
         if tag.target.__typename == 'Commit'
           time = Time.parse(tag.target.pushedDate || tag.target.committedDate)
-          releases[tag.name] = InternalRelease.new(tag.name, tag.name, time, url, tag.target.message, :lightweight_tag)
+          type = :lightweight_tag
         else
-          releases[tag.name] = InternalRelease.new(tag.name, tag.name, tag.target.tagger.date, url, tag.target.message, :tag)
+          time = tag.target.tagger.date
+          type = :tag
         end
+
+        # TODO Check the GraphQL API more thoroughly, if this really can't be retrieved instead of calculated
+        url = "https://github.com/#{repo}/releases/tag/#{tag.name}"
+        releases[tag.name] = InternalRelease.new(tag.target&.oid, tag.name, tag.name, time, url, tag.target.message, type)
       end
 
-      releases = releases.values.flatten.compact.select { |r| allow.include? r.type }
-
-      release = releases.sort { |a, b| a.date <=> b.date }.last
-      erepo[:latest] = [release].compact.map do |rel|
+      releases.values
+              .map { |v| v.is_a?(Array) ? v.first : v }
+              .sort { |a, b| a.date <=> b.date }
+              .map do |rel|
         {
+          sha: rel.sha,
           name: rel.name,
           tag_name: rel.tag_name,
           published_at: rel.date,
           html_url: rel.url,
           body: rel.description,
-          type: rel.type
+          type: rel.type.to_s.to_sym
         }
-      end.first
-    rescue Octokit::NotFound
-      nil
+      end
     end
 
-    def last_releases(user = config[:user])
-      update_data = lambda do |stars|
-        data = { headers: {} }
-        ret = {}
+    def find_rest_releases(repo)
+      releases = per_page(5) { client.releases(repo) }.reject { |r| r.published_at.nil? }
 
-        stars.each do |star|
-          latest = latest_release(star, data)
-          next if latest.nil?
-
-          repo = ephemeral_repo(star)
-          ret[star] = [latest].compact.map do |rel|
-            MatrixReleasetracker::Release.new.tap do |store|
-              store.namespace = repo[:full_name].split('/')[0..-2].join '/'
-              store.name = repo[:name]
-              store.version = rel[:tag_name]
-              store.version_name = rel[:name]
-              store.publish_date = rel[:published_at]
-              store.release_notes = rel[:body]
-              store.repo_url = repo[:html_url]
-              store.release_url = rel[:html_url]
-              store.avatar_url = repo[:avatar_url] ? repo[:avatar_url] + '&s=32' : 'https://avatars1.githubusercontent.com/u/9919?s=32&v=4'
-            end
-          end.first
-        end
-
-        ret
-      end
-
-      thread_count = config[:threads] || 1
-      user_stars = stars(user)
-      repo_information = user_stars.map do |repo|
-        erepo = ephemeral_repo(repo)
+      releases.sort { |a, b| a.published_at <=> b.published_at }
+              .map do |rel|
         {
-          repo: repo,
-          last_check: erepo[:last_check],
-          next_check: erepo[:next_check],
-          has_release: !erepo[:latest].nil?,
-          uses_tags: erepo[:allow] == :tags
+          name: rel.name,
+          tag_name: rel.tag_name,
+          published_at: rel.published_at,
+          html_url: rel.html_url,
+          body: rel.body,
+          type: :release
         }
       end
-      repo_information.sort_by! { |r| r[:last_check] || Time.new(0) }
-
-      ret = if thread_count > 1
-              per_batch = user_stars.count / thread_count
-              per_batch = user_stars.count if per_batch.zero?
-              threads = []
-              user_stars.each_slice(per_batch) do |stars|
-                threads << Thread.new { update_data.call(stars) }
-              end
-
-              { releases: threads.map(&:value).reduce({}, :merge) }
-            else
-              { releases: update_data.call(user_stars) }
-            end
-
-      ret[:last_check] = config[:last_check] if config.key? :last_check
-      config[:last_check] = Time.now
-
-      ret
     end
 
-    private
-
-    def with_stagger(value)
-      value + (Random.rand - 0.5) * (value / 2.0)
-    end
-
+    # Low-level query methods
     def paginate(&_block)
       client.auto_paginate = true
 
@@ -297,10 +201,19 @@ module MatrixReleasetracker::Backends
       client.per_page = opp
     end
 
+    def gql_available?
+      gql_client
+      true
+    rescue ArgumentError
+      false
+    end
+
     def gql_client
       @gql_client ||= use_stack(if config.key?(:access_token)
+                                  logger.debug "GQL: Using access token"
                                   Octokit::Client.new access_token: config[:access_token]
                                 elsif config.key?(:login) && config.key?(:password)
+                                  logger.debug "GQL: Using login"
                                   Octokit::Client.new login: config[:login], password: config[:password]
                                 else
                                   raise ArgumentError, 'GraphQL access on the GitHub API requires account access'
@@ -309,12 +222,16 @@ module MatrixReleasetracker::Backends
 
     def client
       @client ||= use_stack(if config.key?(:client_id) && config.key?(:client_secret)
+                              logger.debug "REST: Using OAuth"
                               Octokit::Client.new client_id: config[:client_id], client_secret: config[:client_secret]
                             elsif config.key?(:access_token)
+                              logger.debug "REST: Using access token"
                               Octokit::Client.new access_token: config[:access_token]
                             elsif config.key?(:login) && config.key?(:password)
+                              logger.debug "REST: Using login"
                               Octokit::Client.new login: config[:login], password: config[:password]
                             else
+                              logger.debug "REST: Using no authorization"
                               Octokit::Client.new
                             end)
     end

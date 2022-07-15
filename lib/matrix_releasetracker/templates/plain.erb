@@ -1,0 +1,17 @@
+<%-
+  publish_type = case release_type
+                 when :prerelease
+                   'created a pre-release for'
+                 when :tag
+                   'tagged'
+                 when :lightweight_tag
+                   'created a lightweight tag for'
+                 else
+                   'released'
+                 end
+-%>
+<%= full_name %> <%= publish_type %> <%= version_name %> on <%= publish_date_str %> (<%= release_url %>)<%- unless release_notes.nil? || release_notes.empty? -%>
+<%- unless release_notes.nil? || release_notes.empty? %>
+<%= trimmed_release_notes %><%= release_note_overflow %>
+<%- end -%>
+<%- end -%>
