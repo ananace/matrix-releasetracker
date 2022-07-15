@@ -6,6 +6,39 @@ For more information, questions, or just the use of the hosted version, you can 
 
 ## Usage
 
+Example state event for advanced tracking;
+
+```jsonc
+{
+  "type": "dev.ananace.ReleaseTracker",
+  "sender": "@ace:kittenface.studio",
+  "content": {
+    "tracking": [
+      // GitHub repositories;
+      "github:r/vector-im/element-web",
+      "github:r/matrix-org/synapse",
+
+      // GitHub group;
+      "github:g/netbox-community",
+
+      // GitHub user (all starred repositories)
+      "github:u/ananace",
+
+      // GitLab(.com) repository;
+      "gitlab:r/mb-saces/synatainer",
+      // GitLab (self-hosted) repository;
+      "gitlab://dev.funkwhale.audio/r/funkwhale/funkwhale"
+    ]
+  },
+  "state_key": "",
+  "origin_server_ts": 1657845040362,
+  "event_id": "$Of010lcT1D19peJ9pZFAN4vV6dYwlAXtVYg_0rGSESs",
+  "room_id": "!YcpuFlnupDnkbqHuKU:example.com"
+}
+```
+
+### Running
+
 The `bin/tracker` binary will track and post updates on new GitHub releases, it requires a `releasetracker.yml` configuration file that it can read and write to.
 
 Once installed and started, all that's necessary to - currently - run the bot is to open a conversation with it and type `!github <username>`
@@ -44,38 +77,6 @@ Restart=on-failure
 [Install]
 WantedBy=default.target
 ```
-
-Example state event for advanced tracking;
-
-```hjson
-{
-  "type": "dev.ananace.ReleaseTracker",
-  "sender": "@ace:kittenface.studio",
-  "content": {
-    "tracking": [
-      // GitHub repositories;
-      "github:r/vector-im/element-web",
-      "github:r/matrix-org/synapse",
-
-      // GitHub group;
-      "github:g/netbox-community",
-
-      // GitHub user (stars)
-      "github:u/ananace",
-
-      // GitLab(.com) repository;
-      "gitlab:r/mb-saces/synatainer",
-      // GitLab (self-hosted) repository;
-      "gitlab://dev.funkwhale.audio/r/funkwhale/funkwhale"
-    ]
-  },
-  "state_key": "",
-  "origin_server_ts": 1657845040362,
-  "event_id": "$Of010lcT1D19peJ9pZFAN4vV6dYwlAXtVYg_0rGSESs",
-  "room_id": "!YcpuFlnupDnkbqHuKU:example.com"
-}
-```
-
 
 ## TODO
 
