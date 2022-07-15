@@ -32,7 +32,7 @@ module MatrixReleasetracker
 
 
       def self.new_from_state(type:, **state)
-        case type
+        case type.to_s
         when 'user'
           klass = User
         when 'group'

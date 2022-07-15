@@ -178,13 +178,14 @@ module MatrixReleasetracker
                  end
 
           path = path.join('/')
-          path = "#{u.authority}:#{path}" if u.authority
+          path = "#{u.host}:#{path}" if u.host
 
           object = {
             backend: u.scheme,
             type: type,
             object: path
           }.compact
+          logger.debug "Parsed #{u.inspect} into #{object.inspect}"
         end
 
         if (%i[backend type object] - object.keys).any?
