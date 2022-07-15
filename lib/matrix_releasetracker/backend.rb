@@ -227,6 +227,56 @@ module MatrixReleasetracker
     #
     # Release helpers
     #
+    def grab_repository_info(repo_name)
+      db = find_repository(repo_name)
+      info = find_repo_information(repo_name)
+      if db.empty?
+        db.insert(
+          slug: info[:full_name],
+          backend: db_type,
+
+          name: info[:name],
+          namespace: info[:namespace],
+          url: info[:html_url],
+          avatar: info[:avatar_url],
+          last_metadata_update: Time.now,
+          next_metadata_update: Time.now + with_stagger(REPODATA_EXPIRY)
+        )
+      else
+        db.update(
+          name: info[:name],
+          namespace: info[:namespace],
+          url: info[:html_url],
+          avatar: info[:avatar_url],
+          last_metadata_update: Time.now,
+          next_metadata_update: Time.now + with_stagger(REPODATA_EXPIRY)
+        )
+      end
+    end
+
+    def grab_repository_releases(repo)
+      latest = find_repo_releases(repo).last
+      if latest
+        database[:releases].insert_conflict(:ignore).insert(
+          version: latest[:tag_name],
+          repositories_id: repo[:id],
+
+          name: latest[:name] || latest[:tag_name] || latest[:sha],
+          commit_sha: latest[:sha],
+          publish_date: latest[:published_at],
+          release_notes: latest[:body] || '',
+          url: latest[:html_url],
+          type: latest[:type].to_s
+        )
+      end
+
+      db = database[:repositories].where(id: repo[:id], backend: db_type)
+      db.update(
+        last_update: Time.now,
+        next_update: Time.now + with_stagger(latest ? (%i[prerelease release].include?(latest[:type]) ? RELEASE_EXPIRY : TAGS_RELEASE_EXPIRY) : NIL_RELEASE_EXPIRY)
+      )
+    end
+
     def grab_repository(repo_name)
       db = find_repository(repo_name)
 
@@ -234,29 +284,7 @@ module MatrixReleasetracker
       if repo.nil? || (repo[:next_metadata_update] || Time.new(0)) < Time.now
         logger.debug "Timeout reached for repository #{repo_name} metadata, updating..."
 
-        info = find_repo_information(repo_name)
-        if db.empty?
-          db.insert(
-            slug: info[:full_name],
-            backend: db_type,
-
-            name: info[:name],
-            namespace: info[:namespace],
-            url: info[:html_url],
-            avatar: info[:avatar_url],
-            last_metadata_update: Time.now,
-            next_metadata_update: Time.now + with_stagger(REPODATA_EXPIRY)
-          )
-        else
-          db.update(
-            name: info[:name],
-            namespace: info[:namespace],
-            url: info[:html_url],
-            avatar: info[:avatar_url],
-            last_metadata_update: Time.now,
-            next_metadata_update: Time.now + with_stagger(REPODATA_EXPIRY)
-          )
-        end
+        grab_repository_info(repo_name)
 
         repo = db.first
       end
@@ -266,25 +294,7 @@ module MatrixReleasetracker
       if (repo[:next_update] || Time.new(0)) < Time.now
         logger.debug "Timeout reached for repository #{repo[:slug]} releases, updating..."
 
-        latest = find_repo_releases(repo).last
-        if latest
-          database[:releases].insert_conflict(:ignore).insert(
-            version: latest[:tag_name],
-            repositories_id: repo[:id],
-
-            name: latest[:name] || latest[:tag_name] || latest[:sha],
-            commit_sha: latest[:sha],
-            publish_date: latest[:published_at],
-            release_notes: latest[:body] || '',
-            url: latest[:html_url],
-            type: latest[:type].to_s
-          )
-        end
-
-        db.update(
-          last_update: Time.now,
-          next_update: Time.now + with_stagger(latest ? (%i[prerelease release].include?(latest[:type]) ? RELEASE_EXPIRY : TAGS_RELEASE_EXPIRY) : NIL_RELEASE_EXPIRY)
-        )
+        grab_repository_releases(repo)
 
         repo = db.first
       end
@@ -422,7 +432,7 @@ module MatrixReleasetracker
         end
 
         repo = find_repository(repo_name).select(:id, :slug)
-        refresh_repo(repo_name) if repo.empty?
+        grab_repository_info(repo_name) if repo.empty?
 
         repo = repo.first
 
@@ -437,7 +447,7 @@ module MatrixReleasetracker
         end
 
         repo = find_repository(repo_name).select(:id, :slug)
-        refresh_repo(repo_name) if repo.empty?
+        grab_repository_info(repo_name) if repo.empty?
 
         repo = repo.first
 

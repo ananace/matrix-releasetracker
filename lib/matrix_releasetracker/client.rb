@@ -126,38 +126,67 @@ module MatrixReleasetracker
 
       # {
       #   "tracking": [
+      #     "github:u/user",
+      #     "github:g/group",
+      #     "github:r/group/repo",
+      #     "gitlab:u/user",
+      #     "gitlab:g/group",
+      #     "gitlab:r/group/repo",
+      #     "gitlab://gitlab.example.com/u/user",
+      #     "gitlab://gitlab.example.com/g/group",
+      #     "gitlab://gitlab.example.com/r/group/repo",
+      #     
       #     {
       #       "backend": "github",
       #       "type": "user", # stars
-      #       "object": "username"
+      #       "object": "<username>"
       #     },
       #     {
       #       "backend": "github",
       #       "type": "repository", # single repo
-      #       "object": "repository"
+      #       "object": "<group>/<repository>"
       #     },
       #     {
       #       "backend": "github",
       #       "type": "group", # repos under a namespace
-      #       "object": "organization/user"
+      #       "object": "<group>"
       #     },
       #     {
       #       "backend": "gitlab",
       #       "type": "repository",
-      #       "object": "repository" # on gitlab.com
+      #       "object": "<group>/<repository>" # on gitlab.com
       #     },
       #     {
       #       "backend": "gitlab",
       #       "type": "repository",
-      #       "object": "repository",
-      #       "data": {
-      #         "instance": "gitlab.example.com"
-      #       }
+      #       "object": "gitlab.example.com:<group>/<repository>",
       #     }
       #   ]
       # }
       
       tracked = data[:tracking].map { |object|
+        if object.is_a? String
+          u = URI(object)
+          path = (u.path&.[](1..-1) || u.opaque).split('/')
+          type = case path.shift
+                 when 'g'
+                   :group
+                 when 'r'
+                   :repository
+                 when 'u'
+                   :user
+                 end
+
+          path = path.join('/')
+          path = "#{u.authority}:#{path}" if u.authority
+
+          object = {
+            backend: u.scheme,
+            type: type,
+            object: path
+          }.compact
+        end
+
         if (%i[backend type object] - object.keys).any?
           logger.warn "Tracking object #{object} is missing required keys"
           next

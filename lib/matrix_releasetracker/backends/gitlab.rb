@@ -112,21 +112,23 @@ module MatrixReleasetracker::Backends
 
     # Low-level communication
     def get_gql(graphql, variables: {}, instance: nil)
-      logger.debug "< instance: #{instance.inspect}, query: #{graphql.inspect}, variables: #{variables.inspect}"
-
       res = with_client(instance) { |http, path|
         http.post path, { query: graphql, variables: variables }.to_json, { 'content-type' => 'application/json' }
       }
 
-      logger.debug "> #{res.inspect}"
-
-      JSON.load(res.body, symbolize_keys: true)
+      if res.is_a? Net::HTTPOK
+        JSON.load(res.body, symbolize_keys: true)
+      else
+        headers = res.to_hash.map { |k, v| "#{k}: #{v.join(', ')}" }.join("\n")
+        logger.error "#{res.inspect}\n#{headers}\n#{res.body}"
+        raise res.body
+      end
     end
 
     def with_client(instance, &block)
       cl = client(instance)
 
-      if instance.start_with? 'https://'
+      if instance&.start_with? 'https://'
         path = URI(instance).path
       else
         path = '/api/graphql'
@@ -136,7 +138,7 @@ module MatrixReleasetracker::Backends
     end
 
     def client(instance)
-      instance ||= 'github.com'
+      instance ||= 'gitlab.com'
 
       @clients ||= {}
       @clients[instance] ||= begin
