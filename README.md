@@ -45,6 +45,38 @@ Restart=on-failure
 WantedBy=default.target
 ```
 
+Example state event for advanced tracking;
+
+```hjson
+{
+  "type": "dev.ananace.ReleaseTracker",
+  "sender": "@ace:kittenface.studio",
+  "content": {
+    "tracking": [
+      // GitHub repositories;
+      "github:r/vector-im/element-web",
+      "github:r/matrix-org/synapse",
+
+      // GitHub group;
+      "github:g/netbox-community",
+
+      // GitHub user (stars)
+      "github:u/ananace",
+
+      // GitLab(.com) repository;
+      "gitlab:r/mb-saces/synatainer",
+      // GitLab (self-hosted) repository;
+      "gitlab://dev.funkwhale.audio/r/funkwhale/funkwhale"
+    ]
+  },
+  "state_key": "",
+  "origin_server_ts": 1657845040362,
+  "event_id": "$Of010lcT1D19peJ9pZFAN4vV6dYwlAXtVYg_0rGSESs",
+  "room_id": "!YcpuFlnupDnkbqHuKU:example.com"
+}
+```
+
+
 ## TODO
 
 - ~~Store data in an actual database, not the config file~~
