@@ -175,10 +175,10 @@ module MatrixReleasetracker
       
       errors = []
 
-      type = data[:type]
+      msgtype = data[:type]
 
-      logger.debug "Setting messagetype to #{type} in room #{room_id}" if type
-      errors << "Invalid message type #{type.inspect}, must be m.text/m.notice" if type && !%w[m.text m.notice].include?(type)
+      logger.debug "Setting messagetype to #{msgtype} in room #{room_id}" if msgtype
+      errors << "Invalid message type #{msgtype.inspect}, must be m.text/m.notice" if msgtype && !%w[m.text m.notice].include?(msgtype)
 
       tracked = data[:tracking].map { |object|
         if object.is_a? String
@@ -246,19 +246,19 @@ module MatrixReleasetracker
       end
 
       if @room_data.key? room_id
-        existing = @room_data[room_id][:tracked].map { |obj| obj.attributes.slice(:object, :backend, :type) }
-        to_remove = existing - tracked.map { |obj| obj.attributes.slice(:object, :backend, :type) }
+        existing = @room_data[room_id][:tracked]
+        existing.each do |tracking|
+          next if tracked.any? { |obj| obj.attributes.slice(:object, :backend, :type) == tracking.attributes.slice(:object, :backend, :type) }
 
-        to_remove.each do |obj|
-          obj.remove_track
+          tracking.remove_track
         end
       end
 
       data = @room_data[room_id] ||= {}
 
       data[:tracked] = tracked
-      if type
-        data[:type] = type
+      if msgtype
+        data[:type] = msgtype
       else
         data.delete :type
       end
