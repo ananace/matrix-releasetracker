@@ -19,6 +19,7 @@ Example config:
   # also acceptable are a :login, :password combination - or :client_id, :client_secret for OAuth without GraphQL support
   # It's also possible to skip the authentication entirely, to run with heavily reduced limits
   :type: github
+- :type: gitlab
 :client:
   :hs_url: https://matrix.org
   :access_token: <token>

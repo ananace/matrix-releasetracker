@@ -11,6 +11,8 @@
   #:login: GitHub Username
   #:password: GitHub Password
 
+- :type: :gitlab
+
 :client:
   :hs_url: https://matrix.example.com
   :access_token: Bot account access_token
