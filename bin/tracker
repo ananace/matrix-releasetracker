@@ -105,11 +105,16 @@ class ReleasetrackerRunner
                 rel.max_chars = obj.extradata[:max_chars] if obj.extradata.key? :max_chars
               end
 
+              if client.room_data.key? obj.room_id.to_s
+                msgtype = client.room_data[obj.room_id.to_s][:type]
+              end
+              msgtype ||= 'm.notice'
+
               rel.avatar_url = fix_media_url(rel.avatar_url) if rel.avatar_url
               api.send_message_event(
                 obj.room_id,
                 'm.room.message',
-                msgtype: 'm.notice',
+                msgtype: msgtype,
                 body: rel.to_s(:markdown),
                 formatted_body: rel.to_s(:html),
                 format: 'org.matrix.custom.html'

@@ -125,6 +125,7 @@ module MatrixReleasetracker
       room_id = room_id.to_s if room_id.is_a? MatrixSdk::MXID
 
       # {
+      #   "type": "m.text",
       #   "tracking": [
       #     "github:u/user",
       #     "github:g/group",
@@ -135,6 +136,9 @@ module MatrixReleasetracker
       #     "gitlab://gitlab.example.com/u/user",
       #     "gitlab://gitlab.example.com/g/group",
       #     "gitlab://gitlab.example.com/r/group/repo",
+      #     "gitea://gitea.example.com/u/user",
+      #     "gitea://gitea.example.com/g/group",
+      #     "gitea://gitea.example.com/r/group/repo",
       #     
       #     {
       #       "backend": "github",
@@ -169,6 +173,13 @@ module MatrixReleasetracker
       #   ]
       # }
       
+      errors = []
+
+      type = data[:type]
+
+      logger.debug "Setting messagetype to #{type} in room #{room_id}" if type
+      errors << "Invalid message type #{type.inspect}, must be m.text/m.notice" if type && !%w[m.text m.notice].include?(type)
+
       tracked = data[:tracking].map { |object|
         if object.is_a? String
           u = URI(object)
@@ -182,6 +193,8 @@ module MatrixReleasetracker
                    :user
                  end
 
+          errors << "#{object} is not of a known type (g/r/u)" if type.nil?
+
           path = path.join('/')
           path = "#{u.host}:#{path}" if u.host
 
@@ -193,8 +206,11 @@ module MatrixReleasetracker
           logger.debug "Parsed #{u.inspect} into #{object.inspect}"
         end
 
-        if (%i[backend type object] - object.keys).any?
-          logger.warn "Tracking object #{object} is missing required keys"
+        missing_keys = (%i[backend type object] - object.keys)
+        if missing_keys.any?
+          err = "Tracking object #{object} is missing required keys: #{missing_keys.join ', '}"
+          logger.warn "#{err} in room #{room_id}"
+          errors << err
           next
         end
 
@@ -209,9 +225,17 @@ module MatrixReleasetracker
             extradata: object[:data]
           )
         else
-          logger.warn "Unknown backend #{backend.inspect} for #{object} in room #{room_id}"
+          err = "Unknown backend #{object[:backend].to_sym.inspect} for #{object}"
+          logger.warn "#{err} in room #{room_id}"
+          errors << err
         end
       }
+
+      if errors.any?
+        client.ensure_room(room_id).send_notice("Errors were found during parsing of state object;\n- #{errors.join("\n- ")}")
+
+        return
+      end
 
       tracked.each do |obj|
         if obj.tracked?
@@ -222,7 +246,7 @@ module MatrixReleasetracker
       end
 
       if @room_data.key? room_id
-        existing = @room_data[room_id].map { |obj| obj.attributes.slice(:object, :backend, :type) }
+        existing = @room_data[room_id][:tracked].map { |obj| obj.attributes.slice(:object, :backend, :type) }
         to_remove = existing - tracked.map { |obj| obj.attributes.slice(:object, :backend, :type) }
 
         to_remove.each do |obj|
@@ -230,9 +254,18 @@ module MatrixReleasetracker
         end
       end
 
-      @room_data[room_id] = tracked
+      data = @room_data[room_id] ||= {}
+
+      data[:tracked] = tracked
+      if type
+        data[:type] = type
+      else
+        data.delete :type
+      end
     rescue StandardError => ex
-      puts "#{ex.class}: #{ex}\n#{ex.backtrace.join("\n")}"
+      err = "#{ex.class}: #{ex}\n#{ex.backtrace.join("\n")}"
+      client.ensure_room(room_id).send_notice("#{ex.class} occured when applying new state; #{ex}")
+
       logger.error "Failed to store room data for #{room_id}, #{ex.class}: #{ex}"
     end
 

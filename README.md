@@ -13,6 +13,7 @@ Example state event for advanced tracking;
   "type": "dev.ananace.ReleaseTracker",
   "sender": "@ace:kittenface.studio",
   "content": {
+    "type": "m.text", // m.notice by default
     "tracking": [
       // GitHub repositories;
       "github:r/vector-im/element-web",
@@ -28,6 +29,9 @@ Example state event for advanced tracking;
       "gitlab:r/mb-saces/synatainer",
       // GitLab (self-hosted) repository;
       "gitlab://dev.funkwhale.audio/r/funkwhale/funkwhale"
+
+      // Gitea repository;
+      "gitea://git.lecygnenoir.info/r/LecygneNoir/peertube-helm"
     ]
   },
   "state_key": "",
@@ -53,6 +57,7 @@ Example config:
   # It's also possible to skip the authentication entirely, to run with heavily reduced limits
   :type: github
 - :type: gitlab
+- :type: gitea
 :client:
   :hs_url: https://matrix.org
   :access_token: <token>

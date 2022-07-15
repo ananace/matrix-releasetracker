@@ -8,6 +8,7 @@ require 'matrix_releasetracker/structs'
 
 module MatrixReleasetracker
   module Backends
+    autoload :Gitea,  'matrix_releasetracker/backends/gitea'
     autoload :Github, 'matrix_releasetracker/backends/github'
     autoload :Gitlab, 'matrix_releasetracker/backends/gitlab'
   end

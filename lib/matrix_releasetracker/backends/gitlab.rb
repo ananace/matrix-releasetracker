@@ -61,14 +61,14 @@ module MatrixReleasetracker::Backends
       data = get_gql(graphql, instance: instance, variables: { fullPath: repo })
 
       {
-        full_name: "#{instance}:#{data.dig('data', 'project', 'fullPath')}".gsub(/^:/, ''),
+        full_name: "#{instance}:#{data.dig(:data, :project, :fullPath)}".gsub(/^:/, ''),
 
-        name: data.dig('data', 'project', 'name'),
-        namespace: data.dig('data', 'project', 'namespace', 'fullPath') ||
-          data.dig('data', 'project', 'group', 'fullPath'),
-        html_url: data.dig('data', 'project', 'webUrl'),
-        avatar_url: data.dig('data', 'project', 'avatarUrl') ||
-          data.dig('data', 'project', 'group', 'avatarUrl'),
+        name: data.dig(:data, :project, :name),
+        namespace: data.dig(:data, :project, :namespace, :fullPath) ||
+          data.dig(:data, :project, :group, :fullPath),
+        html_url: data.dig(:data, :project, :webUrl),
+        avatar_url: data.dig(:data, :project, :avatarUrl) ||
+          data.dig(:data, :project, :group, :avatarUrl),
       }
     end
 
@@ -97,15 +97,15 @@ module MatrixReleasetracker::Backends
 
       data = get_gql(graphql, instance: instance, variables: { fullPath: repo, limit: limit })
 
-      data.dig('data', 'project', 'releases', 'nodes').map do |node|
+      data.dig(:data, :project, :releases, :nodes).map do |node|
         {
-          sha: node.dig('commit', 'sha'),
-          name: node['name'],
-          tag_name: node['tagName'],
-          published_at: Time.parse(node['releasedAt']),
-          html_url: node.dig('links', 'selfUrl'),
-          body: node['description'],
-          type: node['upcomingRelease'] ? :prerelease : :release
+          sha: node.dig(:commit, :sha),
+          name: node[:name],
+          tag_name: node[:tagName],
+          published_at: Time.parse(node[:releasedAt]),
+          html_url: node.dig(:links, :selfUrl),
+          body: node[:description],
+          type: node[:upcomingRelease] ? :prerelease : :release
         }
       end
     end
@@ -117,7 +117,7 @@ module MatrixReleasetracker::Backends
       }
 
       if res.is_a? Net::HTTPOK
-        JSON.load(res.body, symbolize_keys: true)
+        JSON.parse(res.body, symbolize_names: true)
       else
         headers = res.to_hash.map { |k, v| "#{k}: #{v.join(', ')}" }.join("\n")
         logger.error "#{res.inspect}\n#{headers}\n#{res.body}"
