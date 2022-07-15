@@ -74,6 +74,7 @@ class ReleasetrackerRunner
     config.backends.each do |_k, b|
       logger.info "Polling backend #{b.name} with #{b.tracking.count} tracked..."
       b.tracking.each do |obj|
+        room_data = config.client.room_data[obj.room_id.to_s]
         logger.debug "Working on #{obj}..."
 
         releases = b.last_releases(obj)
@@ -105,9 +106,7 @@ class ReleasetrackerRunner
                 rel.max_chars = obj.extradata[:max_chars] if obj.extradata.key? :max_chars
               end
 
-              if client.room_data.key? obj.room_id.to_s
-                msgtype = client.room_data[obj.room_id.to_s][:type]
-              end
+              msgtype = room_data[:type] if room_data
               msgtype ||= 'm.notice'
 
               rel.avatar_url = fix_media_url(rel.avatar_url) if rel.avatar_url
