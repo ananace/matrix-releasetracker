@@ -160,6 +160,11 @@ module MatrixReleasetracker
       #       "backend": "gitlab",
       #       "type": "repository",
       #       "object": "gitlab.example.com:<group>/<repository>",
+      #       # TODO:
+      #       "data": {
+      #         "instance": "https://gitlab.internal.example.com/non-standard/path/api/graphql",
+      #         "token": "token"
+      #       }
       #     }
       #   ]
       # }
