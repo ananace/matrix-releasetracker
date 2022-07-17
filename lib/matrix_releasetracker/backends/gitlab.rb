@@ -17,11 +17,12 @@ module MatrixReleasetracker::Backends
     #   []
     # end
 
-    def find_repo_information(repo_name)
+    def find_repo_information(repo_name, **params)
       instance, repo_name = repo_name.split(':')
       repo_name, instance = instance, repo_name if repo_name.nil?
+      instance ||= params[:instance] if params.key? :instance
       
-      find_gql_repository(repo_name, instance: instance)
+      find_gql_repository(repo_name, instance: instance, token: params[:token])
     end
 
     # def find_user_information(user_name)
@@ -31,15 +32,16 @@ module MatrixReleasetracker::Backends
     #   []
     # end
 
-    def find_repo_releases(repo, limit: 1)
+    def find_repo_releases(repo, limit: 1, **params)
       instance, repo_name = repo[:slug].split(':')
       repo_name, instance = instance, repo_name if repo_name.nil?
+      instance ||= params[:instance] if params.key? :instance
       
-      find_gql_releases(repo_name, limit: limit, instance: instance)
+      find_gql_releases(repo_name, limit: limit, instance: instance, token: params[:token])
     end
 
     # Main GraphQL queries
-    def find_gql_repository(repo, instance: nil)
+    def find_gql_repository(repo, instance: nil, token: nil)
       graphql = <<~GQL
       query repoInformation($fullPath: ID!) {
         project(fullPath: $fullPath) {
@@ -58,7 +60,7 @@ module MatrixReleasetracker::Backends
       }
       GQL
 
-      data = get_gql(graphql, instance: instance, variables: { fullPath: repo })
+      data = get_gql(graphql, instance: instance, variables: { fullPath: repo }, token: token)
 
       {
         full_name: "#{instance}:#{data.dig(:data, :project, :fullPath)}".gsub(/^:/, ''),
@@ -72,7 +74,7 @@ module MatrixReleasetracker::Backends
       }
     end
 
-    def find_gql_releases(repo, limit: 1, instance: nil)
+    def find_gql_releases(repo, limit: 1, instance: nil, token: nil)
       graphql = <<~GQL
       query latestRelease($fullPath: ID!, $limit: Int) {
         project(fullPath: $fullPath) {
@@ -95,7 +97,7 @@ module MatrixReleasetracker::Backends
       }
       GQL
 
-      data = get_gql(graphql, instance: instance, variables: { fullPath: repo, limit: limit })
+      data = get_gql(graphql, instance: instance, variables: { fullPath: repo, limit: limit }, token: token)
 
       data.dig(:data, :project, :releases, :nodes).map do |node|
         {
@@ -111,9 +113,12 @@ module MatrixReleasetracker::Backends
     end
 
     # Low-level communication
-    def get_gql(graphql, variables: {}, instance: nil)
+    def get_gql(graphql, variables: {}, instance: nil, token: nil)
+      headers = { 'content-type' => 'application/json' }
+      headers['authorization'] = "Bearer #{token}" if token
+
       res = with_client(instance) { |http, path|
-        http.post path, { query: graphql, variables: variables }.to_json, { 'content-type' => 'application/json' }
+        http.post path, { query: graphql, variables: variables }.to_json, headers
       }
 
       if res.is_a? Net::HTTPOK

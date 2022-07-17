@@ -155,19 +155,19 @@ module MatrixReleasetracker
     #
     # To be implemented by backends
     #
-    def find_group_repositories(group_name)
+    def find_group_repositories(group_name, **params)
       raise NotImplementedError
     end
 
-    def find_user_repositories(group_name)
+    def find_user_repositories(group_name, **params)
       raise NotImplementedError
     end
 
-    def find_repo_information(repo_name)
+    def find_repo_information(repo_name, **params)
       raise NotImplementedError
     end
 
-    def find_repo_releases(repo)
+    def find_repo_releases(repo, **params)
       raise NotImplementedError
     end
 
@@ -180,6 +180,10 @@ module MatrixReleasetracker
 
     def find_repository(name, **filters)
       database[:repositories].where(filters.merge(slug: name, backend: db_type))
+    end
+
+    def find_repository_by_id(id, **filters)
+      database[:repositories].where(filters.merge(id: id, backend: db_type))
     end
 
     def find_tracking(name, **filters)
@@ -217,7 +221,8 @@ module MatrixReleasetracker
         repo_name = repo[:slug]
       end
 
-      grab_repository(repo_name)
+      params = tracking.extradata || {}
+      grab_repository(repo_name, **params)
     end
 
     def last_user_releases(user)
@@ -227,9 +232,10 @@ module MatrixReleasetracker
     #
     # Release helpers
     #
-    def grab_repository_info(repo_name)
+    def grab_repository_info(repo_name, **params)
       db = find_repository(repo_name)
-      info = find_repo_information(repo_name)
+
+      info = find_repo_information(repo_name, **params)
       if db.empty?
         db.insert(
           slug: info[:full_name],
@@ -254,9 +260,15 @@ module MatrixReleasetracker
       end
     end
 
-    def grab_repository_releases(repo)
-      latest = find_repo_releases(repo).last
-      if latest
+    def grab_repository_releases(repo, **params)
+      db = find_repository_by_id repo[:id]
+
+      any_release = false
+      full_release = false
+      find_repo_releases(repo, **params).each do |latest|
+        any_release = true
+        full_release = true if latest[:type] == :release
+
         database[:releases].insert_conflict(:ignore).insert(
           version: latest[:tag_name],
           repositories_id: repo[:id],
@@ -270,21 +282,20 @@ module MatrixReleasetracker
         )
       end
 
-      db = database[:repositories].where(id: repo[:id], backend: db_type)
       db.update(
         last_update: Time.now,
-        next_update: Time.now + with_stagger(latest ? (%i[prerelease release].include?(latest[:type]) ? RELEASE_EXPIRY : TAGS_RELEASE_EXPIRY) : NIL_RELEASE_EXPIRY)
+        next_update: Time.now + with_stagger(any_release ? (full_release ? RELEASE_EXPIRY : TAGS_RELEASE_EXPIRY) : NIL_RELEASE_EXPIRY)
       )
     end
 
-    def grab_repository(repo_name)
+    def grab_repository(repo_name, **params)
       db = find_repository(repo_name)
 
       repo = db.first
       if repo.nil? || (repo[:next_metadata_update] || Time.new(0)) < Time.now
         logger.debug "Timeout reached for repository #{repo_name} metadata, updating..."
 
-        grab_repository_info(repo_name)
+        grab_repository_info(repo_name, **params)
 
         repo = db.first
       end
@@ -294,7 +305,7 @@ module MatrixReleasetracker
       if (repo[:next_update] || Time.new(0)) < Time.now
         logger.debug "Timeout reached for repository #{repo[:slug]} releases, updating..."
 
-        grab_repository_releases(repo)
+        grab_repository_releases(repo, **params)
 
         repo = db.first
       end
@@ -323,11 +334,12 @@ module MatrixReleasetracker
     end
 
     def grab_all_repositories(tracking)
+      params = tracking.extradata || {}
       update_data = lambda do |repos|
         ret = {}
 
         repos.each do |repo|
-          latest = grab_repository(repo[:slug])
+          latest = grab_repository(repo[:slug], **params)
           next if latest.nil?
 
           ret[repo] = latest
@@ -382,7 +394,8 @@ module MatrixReleasetracker
 
       logger.debug "Timeout reached for group #{group_name}, updating tracking information..."
 
-      to_track = find_group_repositories(group_name)
+      params = group.extradata || {}
+      to_track = find_group_repositories(group_name, **params)
       return if to_track.nil?
 
       update_tracking_repositories(group, to_track)
@@ -411,7 +424,8 @@ module MatrixReleasetracker
 
       logger.debug "Timeout reached for user #{user_name}, updating tracking information..."
 
-      to_track = find_user_repositories(user_name)
+      params = user.extradata || {}
+      to_track = find_user_repositories(user_name, **params)
       return if to_track.nil?
 
       update_tracking_repositories(user, to_track)
@@ -419,6 +433,7 @@ module MatrixReleasetracker
     end
 
     def update_tracking_repositories(tracking, to_track)
+      params = tracking.extradata || {}
       currently_tracked = database[:repositories].where(
         id: database[:tracked_repositories].where(
           tracking_id: tracking[:id]
@@ -432,7 +447,7 @@ module MatrixReleasetracker
         end
 
         repo = find_repository(repo_name).select(:id, :slug)
-        grab_repository_info(repo_name) if repo.empty?
+        grab_repository_info(repo_name, **params) if repo.empty?
 
         repo = repo.first
 
@@ -447,7 +462,7 @@ module MatrixReleasetracker
         end
 
         repo = find_repository(repo_name).select(:id, :slug)
-        grab_repository_info(repo_name) if repo.empty?
+        grab_repository_info(repo_name, **params) if repo.empty?
 
         repo = repo.first
 

@@ -30,17 +30,17 @@ module MatrixReleasetracker::Backends
     #
     # Inheritance implementation
     #
-    def find_repo_information(repo_url)
+    def find_repo_information(repo_url, avatar: nil, **params)
       path = URI(repo_url).path.split('/').reject(&:empty?)
       {
         full_name: path[-2..-1].join('/'),
 
         namespace: path[0..-2].join('/'),
-        avatar_url: 'https://git-scm.com/images/logos/downloads/Git-Icon-1788C.png',
+        avatar_url: avatar || 'https://git-scm.com/images/logos/downloads/Git-Icon-1788C.png',
       }
     end
 
-    def find_repo_releases(repo_url, limit: 1, strict_semver: false, allowed: %i[tag lightweight_tag])
+    def find_repo_releases(repo_url, limit: 1, strict_semver: false, allowed: %i[tag lightweight_tag], **params)
       uri = URI(repo_url)
       uri.scheme = uri.scheme.sub('git+', '')
 

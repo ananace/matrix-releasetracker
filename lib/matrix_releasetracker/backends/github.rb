@@ -38,16 +38,16 @@ module MatrixReleasetracker::Backends
     protected
 
     # Backend implementations
-    def find_group_repositories(group_name, data = {})
-      paginate { client.list_repos(group_name, data) }.map(&:full_name).sort
+    def find_group_repositories(group_name, **params)
+      paginate { client.list_repos(group_name) }.map(&:full_name).sort
     end
 
-    def find_user_repositories(user_name, **data)
-      paginate { client.starred(user_name, data) }.map(&:full_name).sort
+    def find_user_repositories(user_name, **params)
+      paginate { client.starred(user_name) }.map(&:full_name).sort
     end
 
-    def find_repo_information(repo_name, **data)
-      repo = client.repository(repo_name, data)
+    def find_repo_information(repo_name, **params)
+      repo = client.repository(repo_name)
 
       avatar = URI(repo.avatar_url || repo.owner.avatar_url || 'https://avatars1.githubusercontent.com/u/9919')
       avatar.query += '&s=32'
@@ -62,13 +62,8 @@ module MatrixReleasetracker::Backends
       }
     end
 
-    def find_repo_releases(repo, **data)
-      extradata = JSON.parse(repo[:extradata] || '{}')
-      allow = extradata.fetch('allow', nil)
-      unless allow
-        allow = [:lightweight_tag, :tag, :release]
-        extradata['allow'] = allow 
-      end
+    def find_repo_releases(repo, allow: nil, **params)
+      allow ||= %i[lightweight_tag tag release]
 
       if gql_available?
         find_gql_releases(repo[:slug]).select { |r| allow.include? r[:type] }

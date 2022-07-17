@@ -13,16 +13,17 @@ module MatrixReleasetracker::Backends
     #
     # Inheritance implementation
     #
-    # def find_group_information(group_name)
+    # def find_group_information(group_name, **params)
     #   instance, group_name = group_name.split(':')
     #   group_name, instance = instance, group_name if group_name.nil?
 
     #   []
     # end
 
-    def find_repo_information(repo_name)
+    def find_repo_information(repo_name, **params)
       instance, repo_name = repo_name.split(':')
       repo_name, instance = instance, repo_name if repo_name.nil?
+      instance ||= params[:instance] if params.key? :instance
 
       find_rest_repository(repo_name, instance: instance)
     end
@@ -34,9 +35,10 @@ module MatrixReleasetracker::Backends
     #   []
     # end
 
-    def find_repo_releases(repo, limit: 1)
+    def find_repo_releases(repo, limit: 1, **params)
       instance, repo_name = repo[:slug].split(':')
       repo_name, instance = instance, repo_name if repo_name.nil?
+      instance ||= params[:instance] if params.key? :instance
 
       find_rest_releases(repo_name, limit: limit, instance: instance)
     end
