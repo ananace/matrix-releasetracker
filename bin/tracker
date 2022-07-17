@@ -19,7 +19,7 @@ ROOM_STATE_FILTER = {
   }
 }.freeze
 
-class ReleasetrackerRunner
+class Releasetracker
   attr_accessor :running
   attr_reader :logger, :config, :options, :client, :api
 
@@ -302,7 +302,7 @@ if $PROGRAM_NAME == __FILE__
   MatrixReleasetracker.debug! if options[:debug]
   MatrixSdk.debug! if options.delete :sdk_debug
 
-  runner = ReleasetrackerRunner.new(**options)
+  runner = Releasetracker.new(**options)
   #Signal.trap("INT") { runner.running = false; logger.info "Interrupt received, shutting down."; }
   #Signal.trap("TERM") { runner.running = false; logger.info "Interrupt received, shutting down."; }
 
