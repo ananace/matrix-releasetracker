@@ -19,7 +19,7 @@ Metrics/ClassLength:
 Metrics/MethodLength:
   Max: 60
 
-Metrics/LineLength:
+Layout/LineLength:
   Max: 190
 
 Style/SingleLineMethods:

@@ -27,6 +27,6 @@ jobs:
     - name: Install rubocop
       run: gem install -N rubocop
     - name: Rubocop
-      run: rubocop
+      run: rubocop bin/ lib/
     - name: Run tests
       run: bundle exec rake
