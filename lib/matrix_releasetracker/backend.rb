@@ -133,7 +133,7 @@ module MatrixReleasetracker
               raise "Unknown tracking type #{tracked.inspect}"
             end
 
-      { releases: rel }
+      { releases: rel.compact }
     end
 
     protected
@@ -222,6 +222,7 @@ module MatrixReleasetracker
       end
 
       params = tracking.extradata || {}
+      params[:__tracking] = tracking
       grab_repository(repo_name, **params)
     end
 
@@ -289,6 +290,7 @@ module MatrixReleasetracker
     end
 
     def grab_repository(repo_name, **params)
+      tracking = params.delete :__tracking
       db = find_repository(repo_name)
 
       repo = db.first
@@ -315,6 +317,8 @@ module MatrixReleasetracker
       return if latest.nil?
 
       MatrixReleasetracker::Release.new.tap do |store|
+        store.for_tracked = tracking
+
         store.repositories_id = repo[:id]
         store.release_id = latest[:id]
 
@@ -335,6 +339,8 @@ module MatrixReleasetracker
 
     def grab_all_repositories(tracking)
       params = tracking.extradata || {}
+      params[:__tracking] = tracking
+
       update_data = lambda do |repos|
         ret = {}
 
@@ -394,7 +400,7 @@ module MatrixReleasetracker
 
       logger.debug "Timeout reached for group #{group_name}, updating tracking information..."
 
-      params = group.extradata || {}
+      params = JSON.parse(group[:extradata] || '{}', symbolize_names: true)
       to_track = find_group_repositories(group_name, **params)
       return if to_track.nil?
 
@@ -424,7 +430,7 @@ module MatrixReleasetracker
 
       logger.debug "Timeout reached for user #{user_name}, updating tracking information..."
 
-      params = user.extradata || {}
+      params = JSON.parse(user[:extradata] || '{}', symbolize_names: true)
       to_track = find_user_repositories(user_name, **params)
       return if to_track.nil?
 
@@ -433,7 +439,8 @@ module MatrixReleasetracker
     end
 
     def update_tracking_repositories(tracking, to_track)
-      params = tracking.extradata || {}
+      params = JSON.parse(tracking[:extradata] || '{}', symbolize_names: true)
+
       currently_tracked = database[:repositories].where(
         id: database[:tracked_repositories].where(
           tracking_id: tracking[:id]

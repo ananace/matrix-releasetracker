@@ -71,62 +71,73 @@ class ReleasetrackerRunner
   private
 
   def update_backends
-    config.backends.each do |_k, b|
-      logger.info "Polling backend #{b.name} with #{b.tracking.count} tracked..."
-      b.tracking.each do |obj|
-        room_data = config.client.room_data[obj.room_id.to_s]
-        logger.debug "Working on #{obj}..."
+    to_update = config.backends
+      .map { |_, b| b.tracking }
+      .flatten
+      .group_by { |t| t.room_id }
 
-        releases = b.last_releases(obj)
-        repos = b.get_all_repositories_for(obj)
-        logger.info "Tracking #{repos.count} repositories - #{releases[:releases].count} with releases, for #{obj}."
+    to_update.each do |room_id, tracking|
+      room_data = config.client.room_data[room_id.to_s]
 
-        releases[:releases].each do |rel|
-          if rel.nil?
-            logger.debug "#{obj}: Found nil release, skipping."
-            next
-          end
+      tracked = tracking.map do |obj|
+        b = obj.backend
+        { releases: b.last_releases(obj)[:releases], repos: b.get_all_repositories_for(obj) }
+      end
+      combined = {
+        releases: tracked.map { |obj| obj[:releases] }.flatten,
+        repos: tracked.map { |obj| obj[:repos] }.flatten,
+      }
 
-          if config.database[:tracked_repositories].where(tracking_id: obj.id, repositories_id: rel.repositories_id).empty?
-            logger.debug "#{obj}: Latest release is for untracked repo #{rel.full_name}, skipping."
-            next
-          end
+      if to_update[room_id].count == 1
+        logger.info "#{room_id}: Tracking #{combined[:repos].count} repositories - #{combined[:releases].count} with releases, for #{tracking.first}."
+      else
+        grouped = to_update[room_id].group_by { |obj| obj.type }.map { |k, v| "#{v.count} #{k}(s)" }.join(', ')
 
-          if config.database[:latest_releases].where(tracking_id: obj.id, repositories_id: rel.repositories_id, releases_id: rel.release_id).any?
-            # logger.debug "#{obj}: Release #{rel.full_name} #{rel.version_name} (#{rel.release_id}) same as the latest notified one, skipping notice."
-            next
-          else
-            if Time.now - rel.publish_date > 7 * 24 * 60 * 60
-              logger.info "#{obj}: #{rel.full_name} #{rel.version_name} release was more than 7 days ago (#{rel.publish_date}), skipping notice."
-            else
-              logger.info "#{obj}: Posting notice about #{rel.full_name} #{rel.version_name}"
+        logger.info "#{room_id}: Tracking #{combined[:repos].count} repositories - #{combined[:releases].count} with releases, for #{grouped}."
+      end
 
-              if obj.extradata
-                rel.max_lines = obj.extradata[:max_lines] if obj.extradata.key? :max_lines
-                rel.max_chars = obj.extradata[:max_chars] if obj.extradata.key? :max_chars
-              end
+      combined[:releases].each do |rel|
+        obj = rel.for_tracked
 
-              msgtype = room_data[:type] if room_data
-              msgtype ||= 'm.notice'
-
-              rel.avatar_url = fix_media_url(rel.avatar_url) if rel.avatar_url
-              api.send_message_event(
-                obj.room_id,
-                'm.room.message',
-                msgtype: msgtype,
-                body: rel.to_s(:markdown),
-                formatted_body: rel.to_s(:html),
-                format: 'org.matrix.custom.html'
-              )
-            end
-          end
-
-          config.database[:latest_releases]
-                .insert_conflict(:replace)
-                .insert(tracking_id: obj.id, repositories_id: rel.repositories_id, releases_id: rel.release_id)
-        rescue StandardError => e
-          logger.error "Failed to post notice, #{e.class}: #{e}\n#{e.backtrace[0..10].join("\n")}"
+        if config.database[:tracked_repositories].where(tracking_id: obj.id, repositories_id: rel.repositories_id).empty?
+          logger.debug "#{obj}: Latest release is for untracked repo #{rel.full_name}, skipping."
+          next
         end
+
+        if config.database[:latest_releases].where(tracking_id: obj.id, repositories_id: rel.repositories_id, releases_id: rel.release_id).any?
+          # logger.debug "#{obj}: Release #{rel.full_name} #{rel.version_name} (#{rel.release_id}) same as the latest notified one, skipping notice."
+          next
+        else
+          if Time.now - rel.publish_date > 7 * 24 * 60 * 60
+            logger.info "#{obj}: #{rel.full_name} #{rel.version_name} release was more than 7 days ago (#{rel.publish_date}), skipping notice."
+          else
+            logger.info "#{obj}: Posting notice about #{rel.full_name} #{rel.version_name}"
+
+            if obj.extradata
+              rel.max_lines = obj.extradata[:max_lines] if obj.extradata.key? :max_lines
+              rel.max_chars = obj.extradata[:max_chars] if obj.extradata.key? :max_chars
+            end
+
+            msgtype = room_data[:type] if room_data
+            msgtype ||= 'm.notice'
+
+            rel.avatar_url = fix_media_url(rel.avatar_url) if rel.avatar_url
+            api.send_message_event(
+              obj.room_id,
+              'm.room.message',
+              msgtype: msgtype,
+              body: rel.to_s(:markdown),
+              formatted_body: rel.to_s(:html),
+              format: 'org.matrix.custom.html'
+            )
+          end
+        end
+
+        config.database[:latest_releases]
+              .insert_conflict(:replace)
+              .insert(tracking_id: obj.id, repositories_id: rel.repositories_id, releases_id: rel.release_id)
+      rescue StandardError => e
+        logger.error "Failed to post notice, #{e.class}: #{e}\n#{e.backtrace[0..10].join("\n")}"
       end
     end
   end

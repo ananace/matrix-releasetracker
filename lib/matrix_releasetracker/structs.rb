@@ -30,6 +30,10 @@ module MatrixReleasetracker
         end
       end
 
+      def to_s
+        "#{type} #{object}"
+      end
+
 
       def self.new_from_state(type:, **state)
         case type.to_s

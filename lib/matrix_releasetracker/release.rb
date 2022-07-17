@@ -5,7 +5,7 @@ end
 module MatrixReleasetracker
   class Release
     attr_accessor :namespace, :name, :version, :commit_sha, :publish_date, :release_notes, :repo_url, :release_url, :avatar_url, :release_type
-    attr_accessor :repositories_id, :release_id
+    attr_accessor :repositories_id, :release_id, :for_tracked
     attr_accessor :max_lines, :max_chars
     attr_writer :version_name
 
