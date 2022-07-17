@@ -10,6 +10,7 @@ require 'matrix_sdk/errors'
 module MatrixReleasetracker
   class Client
     include PP::ObjectMixin
+
     ACCOUNT_DATA_KEY = 'com.github.ananace.RequestTracker.data'
     ROOM_STATE_KEY = 'dev.ananace.ReleaseTracker'
     ACCOUNT_DATA_FILTER = {
@@ -29,16 +30,16 @@ module MatrixReleasetracker
     def initialize(config:, **configuration)
       @config = config
       @use_sync = false
-      @client = MatrixSdk::Client.new configuration.delete(:hs_url), configuration.merge(client_cache: :some)
+      @client = MatrixSdk::Client.new configuration.delete(:hs_url), **configuration.merge(client_cache: :some)
       @api = client.api
       @data = {}
       @room_data = {}
 
       client.on_invite_event.add_handler do |ev|
         logger.info "Invited to #{ev[:room_id]}."
-        if config.backends.map { |_k, b| b.tracking.map { |u| u.room_id } }.flatten.uniq.count > 50
-          logger.info "But tracking more than 50 object already, so ignoring."
-          return
+        if config.backends.map { |_k, b| b.tracking.map(&:room_id) }.flatten.uniq.count > 50
+          logger.info 'But tracking more than 50 object already, so ignoring.'
+          break
         end
         client.join_room(ev[:room_id])
       end
@@ -47,27 +48,27 @@ module MatrixReleasetracker
         room_id = ev.room_id.to_s
         message = ev
 
-        return unless message[:content][:body].start_with? '!github '
-        return unless config.backends.keys.include? :github
+        break unless message[:content][:body].start_with? '!github '
+        break unless config.backends.keys.include? :github
 
         logger.info "#{message[:sender]} in #{room_id}: #{message[:content][:body]}"
 
         users = api.get_room_members(room_id)[:chunk].select { |c| c[:content][:membership] == 'join' }
         if users.count > 2
           api.send_notice(room_id.to_s, 'Not a 1:1 room, ignoring request.')
-          return
+          break
         end
 
         if config.client.room_data.key? room_id
           api.send_notice(room_id.to_s, 'This room uses state tracking object, ignoring request.')
-          return
+          break
         end
 
         backend = config.backends[:github]
         existing = backend.tracking.find { |u| u.room_id == room_id.to_s }
 
-        gh_name = message[:content][:body][8..-1].downcase
-        return if existing && existing.object == gh_name && existing.type == :user
+        gh_name = message[:content][:body][8..].downcase
+        break if existing && existing.object == gh_name && existing.type == :user
 
         if existing
           backend.update_tracking(existing.id, type: :user, object: gh_name)
@@ -109,74 +110,71 @@ module MatrixReleasetracker
       @data.delete :users
 
       client.rooms.each do |room|
-        begin
-          new_room_data = api.get_room_state(room.id, ROOM_STATE_KEY)
-          set_room_data(room, new_room_data)
-        rescue MatrixSdk::MatrixRequestError => e
-          raise e unless e.code == 'M_NOT_FOUND'
-        end
+        new_room_data = api.get_room_state(room.id, ROOM_STATE_KEY)
+        set_room_data(room, new_room_data)
+      rescue MatrixSdk::MatrixRequestError => e
+        raise e unless e.code == 'M_NOT_FOUND'
       end
 
       true
     end
 
+    # {
+    #   "type": "m.text",
+    #   "tracking": [
+    #     "github:u/user",
+    #     "github:g/group",
+    #     "github:r/group/repo",
+    #     "gitlab:u/user",
+    #     "gitlab:g/group",
+    #     "gitlab:r/group/repo",
+    #     "gitlab://gitlab.example.com/u/user",
+    #     "gitlab://gitlab.example.com/g/group",
+    #     "gitlab://gitlab.example.com/r/group/repo",
+    #     "gitea://gitea.example.com/u/user",
+    #     "gitea://gitea.example.com/g/group",
+    #     "gitea://gitea.example.com/r/group/repo",
+    #
+    #     "git+https://git.example.com/full/path/to/repo",
+    #     "git+ssh://git.example.com/full/path/to/repo",
+    #     "git://git.example.com/full/path/to/repo",
+    #
+    #     {
+    #       "backend": "github",
+    #       "type": "user", # stars
+    #       "object": "<username>"
+    #     },
+    #     {
+    #       "backend": "github",
+    #       "type": "repository", # single repo
+    #       "object": "<group>/<repository>"
+    #     },
+    #     {
+    #       "backend": "github",
+    #       "type": "group", # repos under a namespace
+    #       "object": "<group>"
+    #     },
+    #     {
+    #       "backend": "gitlab",
+    #       "type": "repository",
+    #       "object": "<group>/<repository>" # on gitlab.com
+    #     },
+    #     {
+    #       "backend": "gitlab",
+    #       "type": "repository",
+    #       "object": "gitlab.example.com:<group>/<repository>",
+    #       # TODO:
+    #       "data": {
+    #         "instance": "https://gitlab.internal.example.com/non-standard/path/api/graphql",
+    #         "token": "token"
+    #       }
+    #     }
+    #   ]
+    # }
     def set_room_data(room_id, data)
       room_id = room_id.id.to_s if room_id.is_a? MatrixSdk::Room
       room_id = room_id.to_s if room_id.is_a? MatrixSdk::MXID
 
-      # {
-      #   "type": "m.text",
-      #   "tracking": [
-      #     "github:u/user",
-      #     "github:g/group",
-      #     "github:r/group/repo",
-      #     "gitlab:u/user",
-      #     "gitlab:g/group",
-      #     "gitlab:r/group/repo",
-      #     "gitlab://gitlab.example.com/u/user",
-      #     "gitlab://gitlab.example.com/g/group",
-      #     "gitlab://gitlab.example.com/r/group/repo",
-      #     "gitea://gitea.example.com/u/user",
-      #     "gitea://gitea.example.com/g/group",
-      #     "gitea://gitea.example.com/r/group/repo",
-      #
-      #     "git+https://git.example.com/full/path/to/repo",
-      #     "git+ssh://git.example.com/full/path/to/repo",
-      #     "git://git.example.com/full/path/to/repo",
-      #     
-      #     {
-      #       "backend": "github",
-      #       "type": "user", # stars
-      #       "object": "<username>"
-      #     },
-      #     {
-      #       "backend": "github",
-      #       "type": "repository", # single repo
-      #       "object": "<group>/<repository>"
-      #     },
-      #     {
-      #       "backend": "github",
-      #       "type": "group", # repos under a namespace
-      #       "object": "<group>"
-      #     },
-      #     {
-      #       "backend": "gitlab",
-      #       "type": "repository",
-      #       "object": "<group>/<repository>" # on gitlab.com
-      #     },
-      #     {
-      #       "backend": "gitlab",
-      #       "type": "repository",
-      #       "object": "gitlab.example.com:<group>/<repository>",
-      #       # TODO:
-      #       "data": {
-      #         "instance": "https://gitlab.internal.example.com/non-standard/path/api/graphql",
-      #         "token": "token"
-      #       }
-      #     }
-      #   ]
-      # }
-      
       errors = []
 
       msgtype = data[:type]
@@ -184,47 +182,14 @@ module MatrixReleasetracker
       logger.debug "Setting messagetype to #{msgtype} in room #{room_id}" if msgtype
       errors << "Invalid message type #{msgtype.inspect}, must be m.text/m.notice" if msgtype && !%w[m.text m.notice].include?(msgtype)
 
-      tracked = data[:tracking].map { |object|
-        if object.is_a? String
-          u = URI(object)
-          if u.scheme =~ /^git(\+(https?|ssh))?$/
-            object = {
-              backend: :git,
-              type: :repository,
-              object: u.to_s
-            }.compact
-
-            logger.debug "Parsed #{u.inspect} into #{object.inspect}"
-          else
-            path = (u.path&.[](1..-1) || u.opaque).split('/')
-            type = case path.shift
-                   when 'g'
-                     :group
-                   when 'r'
-                     :repository
-                   when 'u'
-                     :user
-                   end
-
-            errors << "#{object} is not of a known type (g/r/u)" if type.nil?
-
-            path = path.join('/')
-            path = "#{u.host}:#{path}" if u.host
-
-            object = {
-              backend: u.scheme,
-              type: type,
-              object: path
-            }.compact
-            logger.debug "Parsed #{u.inspect} into #{object.inspect}"
-          end
-        end
+      tracked = data[:tracking].map do |object|
+        object, errs = parse_tracking_object(object)
+        errors += errs
+        next if errs.any?
 
         missing_keys = (%i[backend type object] - object.keys)
         if missing_keys.any?
-          err = "Tracking object #{object} is missing required keys: #{missing_keys.join ', '}"
-          logger.warn "#{err} in room #{room_id}"
-          errors << err
+          errors << "Tracking object #{object} is missing required keys: #{missing_keys.join ', '}"
           next
         end
 
@@ -238,18 +203,16 @@ module MatrixReleasetracker
             backend: backend,
             object: object[:object],
             type: object[:type],
-            extradata: object[:data]
+            extradata: object[:data] || '{}'
           )
         else
-          err = "Unknown backend #{object[:backend].to_sym.inspect} for #{object}"
-          logger.warn "#{err} in room #{room_id}"
-          errors << err
+          errors << "Unknown backend #{object[:backend].to_sym.inspect} for #{object}"
         end
-      }
+      end
 
       if errors.any?
         client.ensure_room(room_id).send_notice("Errors were found during parsing of state object;\n- #{errors.join("\n- ")}")
-
+        logger.warn "Errors parsing new tracking state in room #{room_id};\n  - #{errors.join("\n  - ")}"
         return
       end
 
@@ -278,23 +241,24 @@ module MatrixReleasetracker
       else
         data.delete :type
       end
-    rescue StandardError => ex
-      err = "#{ex.class}: #{ex}\n#{ex.backtrace.join("\n")}"
-      client.ensure_room(room_id).send_notice("#{ex.class} occured when applying new state; #{ex}")
+    rescue StandardError => e
+      client.ensure_room(room_id).send_notice("#{e.class} occured when applying new state; #{e}")
 
-      logger.error "Failed to store room data for #{room_id}, #{ex.class}: #{ex}"
+      err = "#{e.class}: #{e}\n#{e.backtrace.join("\n")}"
+      logger.error "Failed to store room data for #{room_id}, #{err}"
     end
 
     def save!
-      attempts = 0
+      attempts = 5
       loop do
         to_save = @data
         api.set_account_data(@user, ACCOUNT_DATA_KEY, to_save)
 
         return true
       rescue StandardError => e
-        raise if attempts >= 5
-        attempts += 1
+        raise if attempts <= 0
+
+        attempts -= 1
 
         logger.error "#{e.class} when storing account data: #{e}. Retrying in 1s"
         sleep 1
@@ -313,6 +277,38 @@ module MatrixReleasetracker
 
     private
 
+    def parse_tracking_object(object)
+      return object, [] unless object.is_a? String
+
+      u = URI(object)
+      data = if u.scheme =~ /^git(\+(https?|ssh))?$/
+               {
+                 backend: :git,
+                 type: :repository,
+                 object: u.to_s
+               }.compact
+             else
+               path = (u.path&.[](1..-1) || u.opaque).split('/')
+               type_map = { 'g' => :group, 'r' => :repository, 'u' => :user }
+               type = type_map[path.shift]
+
+               errors = ["#{object} is not of a known type (g/r/u)"] if type.nil?
+
+               path = path.join('/')
+               path = "#{u.host}:#{path}" if u.host
+
+               {
+                 backend: u.scheme,
+                 type: type,
+                 object: path
+               }.compact
+             end
+
+      errors ||= []
+      logger.debug "Parsed #{object.inspect} into #{data.inspect}"
+      [data, errors]
+    end
+
     def reload_with_sync
       api.sync(timeout: 5.0, set_presence: :offline, filter: ACCOUNT_DATA_FILTER.to_json).tap do |data|
         data = data[:account_data][:events].find { |ev| ev[:type] == ACCOUNT_DATA_KEY }
@@ -323,8 +319,8 @@ module MatrixReleasetracker
 
     def reload_with_get
       @data = api.request(:get, :client_r0, "/user/#{@user}/account_data/#{ACCOUNT_DATA_KEY}")
-    rescue MatrixSdk::MatrixNotFoundError # rubocop:disable Lint/HandleExceptions
-      # Not an error
+    rescue MatrixSdk::MatrixNotFoundError
+      # No account data stored
     rescue MatrixSdk::MatrixRequestError => e
       if e.httpstatus == 400
         @use_sync = true

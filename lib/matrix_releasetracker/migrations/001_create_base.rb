@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+# rubocop:disable Metrics/BlockLength
 Sequel.migration do
   change do
     create_table(:meta) do
@@ -85,3 +86,4 @@ Sequel.migration do
     end
   end
 end
+# rubocop:enable Metrics/BlockLength

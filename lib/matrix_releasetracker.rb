@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'matrix_releasetracker/version'
 require 'matrix_releasetracker/backend'
 require 'matrix_releasetracker/client'

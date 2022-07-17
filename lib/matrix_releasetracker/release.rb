@@ -1,12 +1,15 @@
+# frozen_string_literal: true
+
 module Digest
   autoload :SHA2, 'digest'
 end
 
 module MatrixReleasetracker
   class Release
-    attr_accessor :namespace, :name, :version, :commit_sha, :publish_date, :release_notes, :repo_url, :release_url, :avatar_url, :release_type
-    attr_accessor :repositories_id, :release_id, :for_tracked
-    attr_accessor :max_lines, :max_chars
+    attr_accessor \
+      :namespace, :name, :version, :commit_sha, :publish_date,
+      :release_notes, :repo_url, :release_url, :avatar_url, :release_type,
+      :repositories_id, :release_id, :for_tracked, :max_lines, :max_chars
     attr_writer :version_name
 
     def initialize
@@ -17,10 +20,6 @@ module MatrixReleasetracker
       @max_chars = 512
     end
 
-    def to_s
-      "#{full_name} #{version_name || version}"
-    end
-
     def version_name
       @version_name || name
     end
@@ -29,26 +28,26 @@ module MatrixReleasetracker
       [namespace, name].compact.join ' / '
     end
 
-    def mxc_avatar_url
-      
-    end
+    def mxc_avatar_url; end
 
     def with_mxc_url
-      return dup.tap do |r|
+      dup.tap do |r|
         r.avatar_url = mxc_avatar_url
       end
     end
 
-    def to_s(format = :plain)
+    def to_s(format = :simple)
       format = :markdown unless %i[plain markdown html].include? format
-      result = case format
-                  when :plain
-                    render File.read(@plain_template)
-                  when :markdown
-                    render File.read(@markdown_template)
-                  when :html
-                    return Kramdown::Document.new(to_s(:markdown)).to_html_extended + '<br/>'
-                  end
+      case format
+      when :simple
+        "#{full_name} #{version_name || version}"
+      when :plain
+        render File.read(@plain_template)
+      when :markdown
+        render File.read(@markdown_template)
+      when :html
+        "#{Kramdown::Document.new(to_s(:markdown)).to_html_extended}<br/>"
+      end
     end
 
     def to_json(*params)
@@ -74,16 +73,16 @@ module MatrixReleasetracker
     private
 
     def render(template)
-      erb = ERB.new template, 0, '-'
+      erb = ERB.new template, trim_mode: '-'
       erb.result(binding)
     end
 
     def release_note_overflow
-      "   \n ..." if (release_notes || '').count("\n") > 10
+      "   \n ..." if (release_notes || '').count("\n") > max_lines
     end
 
     def publish_date_str
-      publish_date.strftime('%a, %b %e %Y') if publish_date
+      publish_date&.strftime('%a, %b %e %Y')
     end
 
     def trimmed_release_notes
@@ -102,15 +101,18 @@ module MatrixReleasetracker
 end
 
 require 'kramdown'
-module Kramdown
-  class Converter::HtmlExtended < Converter::Html
-    def convert_img(ele, indent)
-      if ele.attr['alt'] == 'avatar'
-        ele.attr['height'] = '32'
-        ele.attr['width'] = '32'
-      end
 
-      super(ele, indent)
+module Kramdown
+  module Converter
+    class HtmlExtended < Html
+      def convert_img(ele, indent)
+        if ele.attr['alt'] == 'avatar'
+          ele.attr['height'] = '32'
+          ele.attr['width'] = '32'
+        end
+
+        super(ele, indent)
+      end
     end
   end
 end

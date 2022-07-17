@@ -1,20 +1,28 @@
 AllCops:
-  TargetRubyVersion: 2.2
+  TargetRubyVersion: 2.7
   Exclude:
+    - 'vendor/'
     - '*.spec'
     - 'Rakefile'
+  NewCops: enable
 
 # Don't enforce documentation
 Style/Documentation:
   Enabled: false
 
+Metrics/BlockLength:
+  Max: 60
+
+Metrics/ClassLength:
+  Max: 400
+
 Metrics/MethodLength:
-  Max: 40
+  Max: 60
 
 Metrics/LineLength:
   Max: 190
 
-Style/RescueModifier:
+Style/SingleLineMethods:
   Enabled: false
 
 Style/RegexpLiteral:

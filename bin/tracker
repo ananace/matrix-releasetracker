@@ -1,10 +1,12 @@
 #!/usr/bin/env ruby
+# frozen_string_literal: true
 
 require 'json'
 require 'logging'
 require 'optparse'
 require 'matrix_releasetracker'
 require 'net/http'
+require 'pp'
 require 'time'
 
 ROOM_STATE_FILTER = {
@@ -20,6 +22,8 @@ ROOM_STATE_FILTER = {
 }.freeze
 
 class Releasetracker
+  include PP::ObjectMixin
+
   attr_accessor :running
   attr_reader :logger, :config, :options, :client, :api
 
@@ -47,7 +51,7 @@ class Releasetracker
 
     sync_thread = Thread.new { matrix_thread }
 
-    while running do
+    while running
       update_backends
       cleanup_data
 
@@ -68,13 +72,23 @@ class Releasetracker
     sync_thread.join if sync_thread&.alive?
   end
 
+  def pretty_print_instance_variables
+    instance_variables.sort.reject { |n| %i[@logger @client @api].include? n }
+  end
+
+  def pretty_print(pp)
+    pp.pp_object(self)
+  end
+
+  alias inspect pretty_print_inspect
+
   private
 
   def update_backends
     to_update = config.backends
-      .map { |_, b| b.tracking }
-      .flatten
-      .group_by { |t| t.room_id }
+                      .map { |_, b| b.tracking }
+                      .flatten
+                      .group_by(&:room_id)
 
     to_update.each do |room_id, tracking|
       room_data = config.client.room_data[room_id.to_s]
@@ -85,13 +99,13 @@ class Releasetracker
       end
       combined = {
         releases: tracked.map { |obj| obj[:releases] }.flatten,
-        repos: tracked.map { |obj| obj[:repos] }.flatten,
+        repos: tracked.map { |obj| obj[:repos] }.flatten
       }
 
       if to_update[room_id].count == 1
         logger.info "#{room_id}: Tracking #{combined[:repos].count} repositories - #{combined[:releases].count} with releases, for #{tracking.first}."
       else
-        grouped = to_update[room_id].group_by { |obj| obj.type }.map { |k, v| "#{v.count} #{k}(s)" }.join(', ')
+        grouped = to_update[room_id].group_by(&:type).map { |k, v| "#{v.count} #{k}(s)" }.join(', ')
 
         logger.info "#{room_id}: Tracking #{combined[:repos].count} repositories - #{combined[:releases].count} with releases, for #{grouped}."
       end
@@ -104,33 +118,33 @@ class Releasetracker
           next
         end
 
-        if config.database[:latest_releases].where(tracking_id: obj.id, repositories_id: rel.repositories_id, releases_id: rel.release_id).any?
-          # logger.debug "#{obj}: Release #{rel.full_name} #{rel.version_name} (#{rel.release_id}) same as the latest notified one, skipping notice."
-          next
+        # Is last notified same as current last release
+        next if config.database[:latest_releases].where(tracking_id: obj.id, repositories_id: rel.repositories_id, releases_id: rel.release_id).any?
+
+        if Time.now - rel.publish_date > 7 * 24 * 60 * 60
+          logger.info "#{obj}: #{rel.full_name} #{rel.version_name} release was more than 7 days ago (#{rel.publish_date}), skipping notice."
         else
-          if Time.now - rel.publish_date > 7 * 24 * 60 * 60
-            logger.info "#{obj}: #{rel.full_name} #{rel.version_name} release was more than 7 days ago (#{rel.publish_date}), skipping notice."
-          else
-            logger.info "#{obj}: Posting notice about #{rel.full_name} #{rel.version_name}"
+          logger.info "#{obj}: Posting notice about #{rel.full_name} #{rel.version_name}"
 
-            if obj.extradata
-              rel.max_lines = obj.extradata[:max_lines] if obj.extradata.key? :max_lines
-              rel.max_chars = obj.extradata[:max_chars] if obj.extradata.key? :max_chars
-            end
+          if obj.extradata
+            rel.max_lines = obj.extradata[:max_lines] if obj.extradata.key? :max_lines
+            rel.max_chars = obj.extradata[:max_chars] if obj.extradata.key? :max_chars
+          end
 
-            msgtype = room_data[:type] if room_data
-            msgtype ||= 'm.notice'
+          msgtype = room_data[:type] if room_data
+          msgtype ||= 'm.notice'
 
-            rel.avatar_url = fix_media_url(rel.avatar_url) if rel.avatar_url
-            api.send_message_event(
-              obj.room_id,
-              'm.room.message',
+          rel.avatar_url = fix_media_url(rel.avatar_url) if rel.avatar_url
+          api.send_message_event(
+            obj.room_id,
+            'm.room.message',
+            {
               msgtype: msgtype,
               body: rel.to_s(:markdown),
               formatted_body: rel.to_s(:html),
               format: 'org.matrix.custom.html'
-            )
-          end
+            }
+          )
         end
 
         config.database[:latest_releases]
@@ -139,6 +153,8 @@ class Releasetracker
       rescue StandardError => e
         logger.error "Failed to post notice, #{e.class}: #{e}\n#{e.backtrace[0..10].join("\n")}"
       end
+    rescue StandardError => e
+      logger.error "Failed to run updates for room #{room_id}, #{e.class}: #{e}\n#{e.backtrace[0..10].join("\n")}"
     end
   end
 
@@ -161,7 +177,7 @@ class Releasetracker
   end
 
   def with_stagger(value, stagger = 0.5)
-    value + (Random.rand - 0.5) * (value * stagger)
+    value + ((Random.rand - 0.5) * value * stagger)
   end
 
   def ensure_rooms
@@ -173,11 +189,12 @@ class Releasetracker
       begin
         api.join_room(room.to_s)
         in_room = true
-      rescue MatrixSdk::MatrixNotFoundError => ex
-        logger.info "Received #{ex.class}: #{ex}"
-      rescue MatrixSdk::MatrixForbiddenError => ex
-        logger.info "Received #{ex.class}: #{ex}"
+      rescue MatrixSdk::MatrixNotFoundError => e
         # Not in room
+        logger.info "Received #{ex.class}: #{e}"
+      rescue MatrixSdk::MatrixForbiddenError => e
+        # Not logged in?
+        logger.warn "Received #{ex.class}: #{e} - access token no longer valid?"
       end
 
       if in_room
@@ -198,7 +215,7 @@ class Releasetracker
   def matrix_thread
     logger.info 'Starting Matrix sync loop...'
     client.sync_filter = ROOM_STATE_FILTER
-    while running do
+    while running
       begin
         client.sync(timeout: 10.0, set_presence: :offline, since: config.client.next_batch)
 
@@ -236,8 +253,8 @@ class Releasetracker
       return current_url[:mxc_url] unless result.is_a? Net::HTTPSuccess
 
       to_update = {
-        etag: result['etag'] != current_url[:etag] ? result['etag'] : nil,
-        last_modified: result['last-modified'] != current_url[:last_modified] ? result['last-modified'] : nil
+        etag: result['etag'] == current_url[:etag] ? nil : result['etag'],
+        last_modified: result['last-modified'] == current_url[:last_modified] ? nil : result['last-modified']
       }.compact
       stored.update(to_update) if to_update.any?
 
@@ -258,7 +275,7 @@ class Releasetracker
       extradata = {
         etag: result['etag'],
         last_modified: result['last-modified'],
-        sha256: Digest::SHA256.hexdigest(result.body) 
+        sha256: Digest::SHA256.hexdigest(result.body)
       }.compact
       config.media.insert(original_url: url, mxc_url: mxc_url, **extradata)
     end
@@ -303,8 +320,9 @@ if $PROGRAM_NAME == __FILE__
   MatrixSdk.debug! if options.delete :sdk_debug
 
   runner = Releasetracker.new(**options)
-  #Signal.trap("INT") { runner.running = false; logger.info "Interrupt received, shutting down."; }
-  #Signal.trap("TERM") { runner.running = false; logger.info "Interrupt received, shutting down."; }
+
+  # Signal.trap("INT") { runner.running = false; logger.info "Interrupt received, shutting down."; }
+  # Signal.trap("TERM") { runner.running = false; logger.info "Interrupt received, shutting down."; }
 
   runner.run!
 end

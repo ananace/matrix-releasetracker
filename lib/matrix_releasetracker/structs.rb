@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'pp'
 
 module MatrixReleasetracker
@@ -19,13 +21,13 @@ module MatrixReleasetracker
           @next_update = args[:next_update]
           self.extradata = args[:extradata]
         else
-          id = args[0]
-          object = args[1]
-          backend = args[2]
-          # type = args[3]
-          room_id = args[4]
-          last_update = args[5]
-          next_update = args[6]
+          @id = args[0]
+          @object = args[1]
+          @backend = args[2]
+          # @type = args[3]
+          @room_id = args[4]
+          @last_update = args[5]
+          @next_update = args[6]
           self.extradata = args[7]
         end
       end
@@ -33,7 +35,6 @@ module MatrixReleasetracker
       def to_s
         "#{type} #{object}"
       end
-
 
       def self.new_from_state(type:, **state)
         case type.to_s
@@ -63,11 +64,13 @@ module MatrixReleasetracker
         }.compact
       end
 
-      def attributes=(**data)
+      def attributes=(data)
+        raise ArgumentError, 'attributes must be a hash' unless data.is_a? Hash
+
         data.each do |key, value|
           next if key.to_s == 'backend'
 
-          self.send("#{key}=".to_sym, value) if instance_variables.include? "@#{key}".to_sym
+          send("#{key}=".to_sym, value) if instance_variables.include? "@#{key}".to_sym
         end
       end
 
@@ -75,7 +78,8 @@ module MatrixReleasetracker
 
       def tracked?
         return false if backend.nil?
-        return false unless backend.is_tracking? **attributes.slice(:id, :object, :type)
+        return false unless backend.tracking?(**attributes.slice(:id, :object, :type))
+
         true
       end
 
@@ -83,11 +87,11 @@ module MatrixReleasetracker
         raise 'No backend link' if backend.nil?
         raise 'Object is not tracked' unless tracked?
 
-        if id
-          result = backend.get_tracking_by_id(id)
-        else
-          result = backend.get_tracking(attributes.slice(:object, :type))
-        end
+        result = if id
+                   backend.get_tracking_by_id(id)
+                 else
+                   backend.get_tracking(**attributes.slice(:object, :type))
+                 end
 
         raise 'Tracking object not found in database' if result.nil?
 
@@ -96,7 +100,6 @@ module MatrixReleasetracker
         self
       end
 
-      
       def add_track
         raise 'Missing backend link' if backend.nil?
         raise 'Already tracked' if tracked?
@@ -119,27 +122,22 @@ module MatrixReleasetracker
         backend.remove_tracking(**attributes.slice(:id, :type, :object))
       end
 
-
       def last_check
-        last_update
+        @last_update
       end
 
       def last_check=(check)
-        last_update = check
+        @last_update = check
       end
 
       def extradata=(data)
-        @extradata = JSON.load(data, symbolize_keys: true)
+        @extradata = JSON.parse(data, symbolize_keys: true)
       end
 
       def repositories
         db = backend.database
         db[:repositories].inner_join(db[:tracked_repositories], repositories_id: :id)
                          .where(db[:tracked_repositories][:tracking_id] => id)
-      end
-
-      def to_s
-        "#{type} #{object}"
       end
 
       def pretty_print_instance_variables

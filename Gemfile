@@ -1,11 +1,9 @@
-source "https://rubygems.org"
+# frozen_string_literal: true
 
-git_source(:github) {|repo_name| "https://github.com/#{repo_name}" }
+source 'https://rubygems.org'
 
-#gem 'matrix_sdk', path: '~/Projects/Ruby/ruby-matrix-sdk'
+## For a local MatrixSdk version
+# gem 'matrix_sdk', path: '~/Projects/Ruby/ruby-matrix-sdk'
 
 # Specify your gem's dependencies in matrix_releasetracker.gemspec
 gemspec
-
-gem 'irb'
-gem 'json'

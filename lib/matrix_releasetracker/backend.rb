@@ -1,5 +1,11 @@
+# frozen_string_literal: true
+
+require 'pp'
+
 module MatrixReleasetracker
   class Backend
+    include PP::ObjectMixin
+
     def initialize(config)
       @config = config
     end
@@ -22,11 +28,11 @@ module MatrixReleasetracker
     #
     def tracking
       @tracking ||= database[:tracking].where(backend: db_type).map do |t|
-        Structs::Tracking.new_from_state t.merge(backend: self)
+        Structs::Tracking.new_from_state(**t.merge(backend: self))
       end
     end
 
-    def is_tracking?(id: nil, object: nil, type: nil)
+    def tracking?(id: nil, object: nil, type: nil)
       if id
         database[:tracking].where(id: id, backend: db_type).any?
       else
@@ -136,6 +142,16 @@ module MatrixReleasetracker
       { releases: rel.compact }
     end
 
+    def pretty_print_instance_variables
+      instance_variables.sort.reject { |n| %i[@config].include? n }
+    end
+
+    def pretty_print(pp)
+      pp.pp_object(self)
+    end
+
+    alias inspect pretty_print_inspect
+
     protected
 
     attr_reader :config
@@ -174,8 +190,8 @@ module MatrixReleasetracker
     #
     # Utility methods
     #
-    def with_stagger(value)
-      value + (Random.rand - 0.5) * (value / 2.0)
+    def with_stagger(value, randomness = 0.5)
+      value + ((Random.rand - 0.5) * value * randomness)
     end
 
     def find_repository(name, **filters)
@@ -215,11 +231,7 @@ module MatrixReleasetracker
           tracking_id: tracking.id
         ).select(:repositories_id)
       ).first
-      if repo.nil?
-        repo_name = tracking.object
-      else
-        repo_name = repo[:slug]
-      end
+      repo_name = repo&.[](:slug) || tracking.object
 
       params = tracking.extradata || {}
       params[:__tracking] = tracking
@@ -264,11 +276,10 @@ module MatrixReleasetracker
     def grab_repository_releases(repo, **params)
       db = find_repository_by_id repo[:id]
 
-      any_release = false
-      full_release = false
+      expiry = NIL_RELEASE_EXPIRY
       find_repo_releases(repo, **params).each do |latest|
-        any_release = true
-        full_release = true if latest[:type] == :release
+        expiry = TAGS_RELEASE_EXPIRY if expiry == NIL_RELEASE_EXPIRY
+        expiry = RELEASE_EXPIRY if latest[:type] == :release && expiry != RELEASE_EXPIRY
 
         database[:releases].insert_conflict(:ignore).insert(
           version: latest[:tag_name],
@@ -285,7 +296,7 @@ module MatrixReleasetracker
 
       db.update(
         last_update: Time.now,
-        next_update: Time.now + with_stagger(any_release ? (full_release ? RELEASE_EXPIRY : TAGS_RELEASE_EXPIRY) : NIL_RELEASE_EXPIRY)
+        next_update: Time.now + with_stagger(expiry)
       )
     end
 
@@ -479,7 +490,7 @@ module MatrixReleasetracker
 
       database.adapter.transaction do
         to_add.each { |rid| database[:tracked_repositories].insert_conflict(:ignore).insert(tracking_id: tracking[:id], repositories_id: rid) }
-        to_remove.each { |rid| database[:tracked_repositories].where(tracking_id: tracking[:id], repositories_id: rid).delete() }
+        to_remove.each { |rid| database[:tracked_repositories].where(tracking_id: tracking[:id], repositories_id: rid).delete }
 
         db = database[:tracking].where(id: tracking[:id], backend: db_type)
         db.update(

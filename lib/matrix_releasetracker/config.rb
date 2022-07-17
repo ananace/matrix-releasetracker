@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'psych'
 
 module MatrixReleasetracker
@@ -26,8 +28,9 @@ module MatrixReleasetracker
       }.merge(data.fetch(:database, {}))
       @database = Database.new(db_config.delete(:connection_string), **db_config)
 
-      @backends = Hash[data.fetch(:backends, []).map do |config|
+      @backends = data.fetch(:backends, []).to_h do |config|
         next unless config.key? :type
+
         type = config.delete(:type).to_s.downcase.to_sym
 
         backend = MatrixReleasetracker::Backends.constants.find { |c| c.to_s.downcase.to_sym == type }
@@ -37,7 +40,7 @@ module MatrixReleasetracker
         config[:client] = @client
 
         [type, MatrixReleasetracker::Backends.const_get(backend).new(config)]
-      end]
+      end
 
       @media = @database[:media]
 
@@ -47,7 +50,7 @@ module MatrixReleasetracker
     end
 
     def save!
-      client.save! if client
+      client&.save!
     end
 
     private
