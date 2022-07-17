@@ -8,10 +8,13 @@ require 'matrix_releasetracker/structs'
 
 module MatrixReleasetracker
   module Backends
+    autoload :Git,    'matrix_releasetracker/backends/git'
     autoload :Gitea,  'matrix_releasetracker/backends/gitea'
     autoload :Github, 'matrix_releasetracker/backends/github'
     autoload :Gitlab, 'matrix_releasetracker/backends/gitlab'
   end
+
+  class Error < StandardError; end
 
   def self.logger
     @logger ||= Logging.logger[MatrixReleasetracker].tap do |log|

@@ -139,6 +139,10 @@ module MatrixReleasetracker
       #     "gitea://gitea.example.com/u/user",
       #     "gitea://gitea.example.com/g/group",
       #     "gitea://gitea.example.com/r/group/repo",
+      #
+      #     "git+https://git.example.com/full/path/to/repo",
+      #     "git+ssh://git.example.com/full/path/to/repo",
+      #     "git://git.example.com/full/path/to/repo",
       #     
       #     {
       #       "backend": "github",
@@ -183,27 +187,37 @@ module MatrixReleasetracker
       tracked = data[:tracking].map { |object|
         if object.is_a? String
           u = URI(object)
-          path = (u.path&.[](1..-1) || u.opaque).split('/')
-          type = case path.shift
-                 when 'g'
-                   :group
-                 when 'r'
-                   :repository
-                 when 'u'
-                   :user
-                 end
+          if u.scheme =~ /^git(\+(https?|ssh))?$/
+            object = {
+              backend: :git,
+              type: :repository,
+              object: u.to_s
+            }.compact
 
-          errors << "#{object} is not of a known type (g/r/u)" if type.nil?
+            logger.debug "Parsed #{u.inspect} into #{object.inspect}"
+          else
+            path = (u.path&.[](1..-1) || u.opaque).split('/')
+            type = case path.shift
+                   when 'g'
+                     :group
+                   when 'r'
+                     :repository
+                   when 'u'
+                     :user
+                   end
 
-          path = path.join('/')
-          path = "#{u.host}:#{path}" if u.host
+            errors << "#{object} is not of a known type (g/r/u)" if type.nil?
 
-          object = {
-            backend: u.scheme,
-            type: type,
-            object: path
-          }.compact
-          logger.debug "Parsed #{u.inspect} into #{object.inspect}"
+            path = path.join('/')
+            path = "#{u.host}:#{path}" if u.host
+
+            object = {
+              backend: u.scheme,
+              type: type,
+              object: path
+            }.compact
+            logger.debug "Parsed #{u.inspect} into #{object.inspect}"
+          end
         end
 
         missing_keys = (%i[backend type object] - object.keys)
@@ -216,6 +230,8 @@ module MatrixReleasetracker
 
         backend = config.backends[object[:backend].to_sym]
         if backend
+          errors << "#{object} does not seem to be a valid git repo" if backend.is_a?(MatrixReleasetracker::Backends::Git) && !backend.valid?(object)
+
           object.delete :backend
           Structs::Tracking.new_from_state(
             room_id: room_id,
