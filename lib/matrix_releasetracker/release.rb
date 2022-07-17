@@ -7,17 +7,27 @@ end
 module MatrixReleasetracker
   class Release
     attr_accessor \
-      :namespace, :name, :version, :commit_sha, :publish_date,
-      :release_notes, :repo_url, :release_url, :avatar_url, :release_type,
-      :repositories_id, :release_id, :for_tracked, :max_lines, :max_chars
+      :name, :version, :commit_sha, :publish_date, :release_notes, :repo_url,
+      :release_url, :avatar_url, :release_type, :repositories_id, :release_id,
+      :for_tracked, :max_lines, :max_chars
+    attr_reader :namespace
     attr_writer :version_name
 
-    def initialize
+    def initialize(**args)
       @plain_template = File.join File.expand_path('templates', __dir__), 'plain.erb'
       @markdown_template = File.join File.expand_path('templates', __dir__), 'markdown.erb'
 
       @max_lines = 10
       @max_chars = 512
+
+      args.each do |k, v|
+        send "#{k}=".to_sym, v if respond_to? "#{k}=".to_sym
+      end
+    end
+
+    def namespace=(namespace)
+      namespace = nil if namespace&.empty?
+      @namespace = namespace
     end
 
     def version_name

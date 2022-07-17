@@ -327,25 +327,25 @@ module MatrixReleasetracker
       latest = latest_db.first
       return if latest.nil?
 
-      MatrixReleasetracker::Release.new.tap do |store|
-        store.for_tracked = tracking
+      MatrixReleasetracker::Release.new(
+        for_tracked: tracking,
 
-        store.repositories_id = repo[:id]
-        store.release_id = latest[:id]
+        repositories_id: repo[:id],
+        release_id: latest[:id],
 
-        store.namespace = repo[:namespace] || repo[:slug].split('/')[0..-2].join('/')
-        store.name = repo[:name]
-        store.repo_url = repo[:url]
-        store.avatar_url = repo[:avatar]
+        namespace: repo[:namespace] || repo[:slug].split('/')[0..-2].join('/'),
+        name: repo[:name],
+        repo_url: repo[:url],
+        avatar_url: repo[:avatar],
 
-        store.version = latest[:version]
-        store.version_name = latest[:name]
-        store.commit_sha = latest[:commit_sha]
-        store.publish_date = latest[:publish_date]
-        store.release_notes = latest[:release_notes]
-        store.release_url = latest[:url]
-        store.release_type = latest[:type]
-      end
+        version: latest[:version],
+        version_name: latest[:name],
+        commit_sha: latest[:commit_sha],
+        publish_date: latest[:publish_date],
+        release_notes: latest[:release_notes],
+        release_url: latest[:url],
+        release_type: latest[:type]
+      )
     end
 
     def grab_all_repositories(tracking)

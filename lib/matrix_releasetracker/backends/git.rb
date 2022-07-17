@@ -33,10 +33,15 @@ module MatrixReleasetracker
       #
       def find_repo_information(repo_url, avatar: nil, **_)
         path = URI(repo_url).path.split('/').reject(&:empty?)
-        {
-          full_name: path[-2..].join('/'),
 
-          namespace: path[0..-2].join('/'),
+        name = path.last
+        namespace = path[0..-2].join('/')
+
+        {
+          full_name: repo_url,
+
+          name: name,
+          namespace: namespace,
           avatar_url: avatar || 'https://git-scm.com/images/logos/downloads/Git-Icon-1788C.png'
         }
       end
