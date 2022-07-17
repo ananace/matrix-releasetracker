@@ -13,6 +13,10 @@
 
 - :type: :gitlab
 
+- :type: :gitea
+
+- :type: :git
+
 :client:
   :hs_url: https://matrix.example.com
   :access_token: Bot account access_token

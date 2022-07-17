@@ -28,10 +28,15 @@ Example state event for advanced tracking;
       // GitLab(.com) repository;
       "gitlab:r/mb-saces/synatainer",
       // GitLab (self-hosted) repository;
-      "gitlab://dev.funkwhale.audio/r/funkwhale/funkwhale"
+      "gitlab://dev.funkwhale.audio/r/funkwhale/funkwhale",
 
       // Gitea repository;
-      "gitea://git.lecygnenoir.info/r/LecygneNoir/peertube-helm"
+      "gitea://git.lecygnenoir.info/r/LecygneNoir/peertube-helm",
+
+      // Bare git repo;
+      "git+https://git.zx2c4.com/wireguard-tools",
+      "git+ssh://git.zx2c4.com/wireguard-tools",
+      "git://git.zx2c4.com/wireguard-tools"
     ]
   },
   "state_key": "",
