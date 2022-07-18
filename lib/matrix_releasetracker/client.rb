@@ -121,6 +121,11 @@ module MatrixReleasetracker
 
     # {
     #   "type": "m.text",
+    #   // TODO
+    #   "config": {
+    #     "max_lines": -1,
+    #     "max_chars": -1
+    #   },
     #   "tracking": [
     #     "github:u/user",
     #     "github:g/group",
@@ -179,6 +184,10 @@ module MatrixReleasetracker
 
       msgtype = data[:type]
 
+      def_config = data[:config]
+      logger.debug "Using #{def_config} as default values in #{room_id}" if def_config
+      def_config ||= {}
+
       logger.debug "Setting messagetype to #{msgtype} in room #{room_id}" if msgtype
       errors << "Invalid message type #{msgtype.inspect}, must be m.text/m.notice" if msgtype && !%w[m.text m.notice].include?(msgtype)
 
@@ -203,7 +212,7 @@ module MatrixReleasetracker
             backend: backend,
             object: object[:object],
             type: object[:type],
-            extradata: object[:data] || '{}'
+            extradata: def_config.merge(JSON.parse(object[:data] || '{}', symbolize_names: true))
           )
         else
           errors << "Unknown backend #{object[:backend].to_sym.inspect} for #{object}"
@@ -216,24 +225,8 @@ module MatrixReleasetracker
         return
       end
 
-      tracked.each do |obj|
-        if obj.tracked?
-          obj.update_track
-        else
-          obj.add_track
-        end
-      end
-
-      if @room_data.key? room_id
-        existing = @room_data[room_id][:tracked]
-        existing.each do |tracking|
-          next if tracked.any? { |obj| obj.attributes.slice(:object, :backend, :type) == tracking.attributes.slice(:object, :backend, :type) }
-
-          tracking.remove_track
-        end
-      end
-
       data = @room_data[room_id] ||= {}
+      apply_tracked(room_id, tracked)
 
       data[:tracked] = tracked
       if msgtype
@@ -246,6 +239,25 @@ module MatrixReleasetracker
 
       err = "#{e.class}: #{e}\n#{e.backtrace.join("\n")}"
       logger.error "Failed to store room data for #{room_id}, #{err}"
+    end
+
+    def apply_tracked(room_id, tracked)
+      tracked.each do |obj|
+        if obj.tracked?
+          obj.update_track
+        else
+          obj.add_track
+        end
+      end
+
+      return unless @room_data.key? room_id
+
+      existing = @room_data[room_id][:tracked] || []
+      existing.each do |tracking|
+        next if tracked.any? { |obj| obj.attributes.slice(:object, :backend, :type) == tracking.attributes.slice(:object, :backend, :type) }
+
+        tracking.remove_track
+      end
     end
 
     def save!

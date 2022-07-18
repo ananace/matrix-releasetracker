@@ -131,7 +131,11 @@ module MatrixReleasetracker
       end
 
       def extradata=(data)
-        @extradata = JSON.parse(data, symbolize_keys: true)
+        @extradata = if data.is_a? String
+                       JSON.parse(data, symbolize_names: true)
+                     else
+                       data
+                     end
       end
 
       def repositories
