@@ -84,41 +84,44 @@ class Releasetracker
 
   private
 
+  def calculate_to_track(tracking)
+    tracked = tracking.map do |obj|
+      b = obj.backend
+      { releases: b.last_releases(obj)[:releases], repos: b.get_all_repositories_for(obj) }
+    end
+
+    {
+      releases: tracked.map { |obj| obj[:releases] }.flatten,
+      repos: tracked.map { |obj| obj[:repos] }.flatten
+    }
+  end
+
   def update_backends
     to_update = config.backends
                       .map { |_, b| b.tracking }
                       .flatten
+                      .shuffle
                       .group_by(&:room_id)
 
     to_update.each do |room_id, tracking|
       room_data = config.client.room_data[room_id.to_s]
-
-      tracked = tracking.map do |obj|
-        b = obj.backend
-        { releases: b.last_releases(obj)[:releases], repos: b.get_all_repositories_for(obj) }
-      end
-      combined = {
-        releases: tracked.map { |obj| obj[:releases] }.flatten,
-        repos: tracked.map { |obj| obj[:repos] }.flatten
-      }
+      combined = calculate_to_track(tracking)
 
       if to_update[room_id].count == 1
         logger.info "#{room_id}: Tracking #{combined[:repos].count} repositories - #{combined[:releases].count} with releases, for #{tracking.first}."
       else
         grouped = to_update[room_id].group_by(&:type).map { |k, v| "#{v.count} #{k}(s)" }.join(', ')
-
         logger.info "#{room_id}: Tracking #{combined[:repos].count} repositories - #{combined[:releases].count} with releases, for #{grouped}."
       end
 
       combined[:releases].each do |rel|
         obj = rel.for_tracked
 
-        if config.database[:tracked_repositories].where(tracking_id: obj.id, repositories_id: rel.repositories_id).empty?
-          logger.debug "#{obj}: Latest release is for untracked repo #{rel.full_name}, skipping."
-          next
-        end
+        # This shouldn't happen, but probably best to keep an eye out
+        next logger.debug "#{obj}: Latest release is for untracked repo #{rel.full_name}, skipping." \
+          if config.database[:tracked_repositories].where(tracking_id: obj.id, repositories_id: rel.repositories_id).empty?
 
-        # Is last notified same as current last release
+        # Skip notifying if current latest release is still the same as the last notified
         next if config.database[:latest_releases].where(tracking_id: obj.id, repositories_id: rel.repositories_id, releases_id: rel.release_id).any?
 
         if Time.now - rel.publish_date > 7 * 24 * 60 * 60
