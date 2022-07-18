@@ -31,7 +31,7 @@ module MatrixReleasetracker
     end
 
     def version_name
-      @version_name || name
+      @version_name || version
     end
 
     def full_name
@@ -47,7 +47,7 @@ module MatrixReleasetracker
     end
 
     def to_s(format = :simple)
-      format = :markdown unless %i[plain markdown html].include? format
+      format = :markdown unless %i[simple plain markdown html].include? format
       case format
       when :simple
         "#{full_name} #{version_name || version}"
@@ -56,7 +56,14 @@ module MatrixReleasetracker
       when :markdown
         render File.read(@markdown_template)
       when :html
-        "#{Kramdown::Document.new(to_s(:markdown)).to_html_extended}<br/>"
+        doc = Kramdown::Document.new(
+          to_s(:markdown),
+          auto_ids: false,
+          remove_span_html_tags: true,
+          syntax_highlighter: nil,
+          math_engine: nil
+        )
+        "#{doc.to_html_extended}<br/>"
       end
     end
 
