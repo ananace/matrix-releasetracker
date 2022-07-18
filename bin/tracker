@@ -147,9 +147,14 @@ class Releasetracker
           )
         end
 
+        val = {
+          tracking_id: obj.id,
+          repositories_id: rel.repositories_id,
+          releases_id: rel.release_id
+        }
         config.database[:latest_releases]
-              .insert_conflict(:replace)
-              .insert(tracking_id: obj.id, repositories_id: rel.repositories_id, releases_id: rel.release_id)
+              .insert_conflict(target: %i[tracking_id repositories_id], update: val)
+              .insert(val)
       rescue StandardError => e
         logger.error "Failed to post notice, #{e.class}: #{e}\n#{e.backtrace[0..10].join("\n")}"
       end
@@ -170,10 +175,11 @@ class Releasetracker
     config.database[:repositories].exclude(id: config.database[:tracked_repositories].select(:repositories_id)).delete
 
     next_cleanup = Time.now + with_stagger(24 * 60 * 60, 0.25)
-    config.database[:meta].insert_conflict(:replace).insert(
+    val = {
       key: 'next_cleanup',
       value: next_cleanup.to_s
-    )
+    }
+    config.database[:meta].insert_conflict(target: :key, update: val).insert(val)
   end
 
   def with_stagger(value, stagger = 0.5)

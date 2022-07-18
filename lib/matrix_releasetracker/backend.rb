@@ -281,7 +281,7 @@ module MatrixReleasetracker
         expiry = TAGS_RELEASE_EXPIRY if expiry == NIL_RELEASE_EXPIRY
         expiry = RELEASE_EXPIRY if latest[:type] == :release && expiry != RELEASE_EXPIRY
 
-        database[:releases].insert_conflict(:ignore).insert(
+        database[:releases].insert_conflict.insert(
           version: latest[:tag_name],
           repositories_id: repo[:id],
 
@@ -489,7 +489,7 @@ module MatrixReleasetracker
       end.compact
 
       database.adapter.transaction do
-        to_add.each { |rid| database[:tracked_repositories].insert_conflict(:ignore).insert(tracking_id: tracking[:id], repositories_id: rid) }
+        to_add.each { |rid| database[:tracked_repositories].insert_conflict.insert(tracking_id: tracking[:id], repositories_id: rid) }
         to_remove.each { |rid| database[:tracked_repositories].where(tracking_id: tracking[:id], repositories_id: rid).delete }
 
         db = database[:tracking].where(id: tracking[:id], backend: db_type)

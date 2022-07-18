@@ -3,7 +3,7 @@
 Sequel.migration do
   change do
     alter_table(:repositories) do
-      add_column :namespace, :string, null: true, default: nil
+      add_column :namespace, String, null: true, default: nil
     end
   end
 end

@@ -16,7 +16,7 @@ FROM ruby:alpine
 COPY --from=builder /build /app
 WORKDIR /app
 
-RUN apk add --no-cache sqlite-libs postgresql-libs \
+RUN apk add --no-cache sqlite-libs postgresql-libs tzdata \
  && bundle config set --local path 'vendor' \
  && bundle config set --local without 'development'
 
