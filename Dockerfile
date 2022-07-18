@@ -20,4 +20,4 @@ RUN apk add --no-cache sqlite-libs postgresql-libs \
  && bundle config set --local path 'vendor' \
  && bundle config set --local without 'development'
 
-ENTRYPOINT [ "/usr/bin/bundle", "exec", "bin/tracker" ]
+ENTRYPOINT [ "/usr/local/bin/bundle", "exec", "bin/tracker" ]
