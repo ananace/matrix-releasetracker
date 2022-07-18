@@ -9,8 +9,8 @@ module MatrixReleasetracker
     attr_accessor \
       :name, :version, :commit_sha, :publish_date, :release_notes, :repo_url,
       :release_url, :avatar_url, :release_type, :repositories_id, :release_id,
-      :for_tracked, :max_lines, :max_chars
-    attr_reader :namespace
+      :for_tracked, :max_lines
+    attr_reader :namespace, :max_chars
     attr_writer :version_name
 
     def initialize(**args)
@@ -28,6 +28,10 @@ module MatrixReleasetracker
     def namespace=(namespace)
       namespace = nil if namespace&.empty?
       @namespace = namespace
+    end
+
+    def max_chars=(max_chars)
+      @max_chars = [max_chars, 40_000].min # Avoid overflowing Matrix message size
     end
 
     def version_name
@@ -95,6 +99,8 @@ module MatrixReleasetracker
     end
 
     def release_note_overflow
+      return nil if max_lines.negative?
+
       "   \n ..." if (release_notes || '').count("\n") > max_lines
     end
 
@@ -103,10 +109,15 @@ module MatrixReleasetracker
     end
 
     def trimmed_release_notes
+      return release_notes if max_lines.negative? && max_chars.negative?
+
+      m_c = max_chars >= 0 ? max_chars : 40_000
+      m_l = max_lines >= 0 ? max_lines : 1_000
+
       trimmed_release_notes = release_notes
       unless trimmed_release_notes.nil? || trimmed_release_notes.empty?
-        trimmed_release_notes = trimmed_release_notes.split("\n")[0, max_lines].map(&:rstrip).join "\n"
-        trimmed_release_notes = trimmed_release_notes[0, max_chars] if trimmed_release_notes.length > max_chars
+        trimmed_release_notes = trimmed_release_notes.split("\n")[0, m_l].map(&:rstrip).join "\n"
+        trimmed_release_notes = trimmed_release_notes[0, m_c] if trimmed_release_notes.length > m_c
       end
       trimmed_release_notes
     end
