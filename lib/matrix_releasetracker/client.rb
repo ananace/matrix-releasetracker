@@ -136,12 +136,12 @@ module MatrixReleasetracker
     #     "gitlab://gitlab.example.com/u/user",
     #     "gitlab://gitlab.example.com/g/group",
     #     "gitlab://gitlab.example.com/r/group/repo",
-    #     "gitea://gitea.example.com/u/user",
+    #     "gitea://token@gitea.example.com/u/user",
     #     "gitea://gitea.example.com/g/group",
     #     "gitea://gitea.example.com/r/group/repo",
     #
     #     "git+https://git.example.com/full/path/to/repo",
-    #     "git+ssh://git.example.com/full/path/to/repo",
+    #     "git+ssh://git@git.example.com/full/path/to/repo",
     #     "git://git.example.com/full/path/to/repo",
     #
     #     {
@@ -292,6 +292,8 @@ module MatrixReleasetracker
     def parse_tracking_object(object)
       return object, [] unless object.is_a? String
 
+      type_map = { 'g' => :group, 'r' => :repository, 'u' => :user }
+
       u = URI(object)
       data = if u.scheme =~ /^git(\+(https?|ssh))?$/
                {
@@ -300,8 +302,16 @@ module MatrixReleasetracker
                  object: u.to_s
                }.compact
              else
-               path = (u.path&.[](1..-1) || u.opaque).split('/')
-               type_map = { 'g' => :group, 'r' => :repository, 'u' => :user }
+               if u.host
+                 path = u.path[1..].split('/')
+                 token = u.password || u.user
+               else
+                 path = u.opaque || u.path
+                 token, path = path.split('@')
+                 path, token = token, path if path.nil?
+                 path = path.split('/')
+                 token = token.split(':').last if token&.include? ':'
+               end
                type = type_map[path.shift]
 
                errors = ["#{object} is not of a known type (g/r/u)"] if type.nil?
@@ -309,10 +319,16 @@ module MatrixReleasetracker
                path = path.join('/')
                path = "#{u.host}:#{path}" if u.host
 
+               auth = {
+                 token: token
+               }.compact
+               auth = nil if auth.empty?
+
                {
-                 backend: u.scheme,
+                 backend: u.scheme.to_sym,
                  type: type,
-                 object: path
+                 object: path,
+                 data: auth
                }.compact
              end
 
