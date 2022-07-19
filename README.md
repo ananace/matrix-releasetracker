@@ -103,16 +103,11 @@ WantedBy=default.target
 
 ## TODO
 
-- ~~Store data in an actual database, not the config file~~
-- ~~Track releases in separate data structures~~ - maybe partially on Matrix, map against update timestamps on each user
-  - Allow requesting pre-release releases as well (Will require proper data storage)
-  - Don't lose releases when multiple releases are done a short period
-- Improve markdown rendering and release note splitting (optional per user)
-- Implement bot-like bang commands to add/remove users and per-user configuration
-- Properly handle releases on moving tags (e.g. neovim/neovim nightly)
+- Write a whole bunch of tests
+- Expose configuration for allowed release types (lightweight tag, signed tag, pre-release, full release, etc)
+- Handle multiple releases in a short period (between two ticks) more gracefully
+- Implement bot-like bang commands to act on the configuration
 - Handle PGP signatures better, don't just print the signature
-
-- ~~Use GraphQL for the GitHub queries?~~ (requires an access token / username + password, as it isn't possible with OAuth apps at the moment)
 
 ## Contributing
 
