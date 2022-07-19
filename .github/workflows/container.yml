@@ -1,0 +1,34 @@
+---
+name: Build container images
+
+on:
+  push:
+    tags: [ "v*" ]
+    branches: [ "master" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build image metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ananace/matrix-releasetracker
+      - name: Log in to DockerHub
+          uses: docker/login-action@v2
+          with:
+            username: ${{ secrets.DOCKERHUB_USERNAME }}
+            password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          push: true
+          tags: "${{ steps.meta.outputs.tags }}"
+          labels: "${{ steps.meta.outputs.labels }}"
