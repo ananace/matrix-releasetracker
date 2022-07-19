@@ -3,6 +3,9 @@
 module MatrixReleasetracker
   module Backends
     class Gitlab < MatrixReleasetracker::Backend
+      class Error < MatrixReleasetracker::Backend::Error; end
+      class GQLError < Error; end
+
       def name
         'GitLab'
       end
@@ -13,6 +16,7 @@ module MatrixReleasetracker
       # def find_group_information(group_name)
       #   instance, group_name = group_name.split(':')
       #   group_name, instance = instance, group_name if group_name.nil?
+      #   instance ||= params[:instance] if params.key? :instance
 
       #   []
       # end
@@ -28,6 +32,7 @@ module MatrixReleasetracker
       # def find_user_information(user_name)
       #   instance, user_name = user_name.split(':')
       #   user_name, instance = instance, user_name if user_name.nil?
+      #   instance ||= params[:instance] if params.key? :instance
 
       #   []
       # end
@@ -41,6 +46,40 @@ module MatrixReleasetracker
       end
 
       # Main GraphQL queries
+      def find_gql_group_repositories(group, instance: nil, token: nil)
+        graphql = <<~GQL
+          query groupList($fullPath: ID!) {
+            namespace(fullPath: $fullPath) {
+              projects {
+                nodes {
+                  fullPath
+                }
+              }
+            }
+          }
+        GQL
+
+        data = get_gql(graphql, instance: instance, variables: { fullPath: group }, token: token)
+        (data.dig(:data, :namespace, :projects, :nodes) || []).map { |n| n[:fullPath] }.sort
+      end
+
+      def find_gql_user_repositories(user, instance: nil, token: nil)
+        graphql = <<~GQL
+          query userList($username: String!) {
+            user(username: $username) {
+              starredProjects {
+                nodes {
+                  fullPath
+                }
+              }
+            }
+          }
+        GQL
+
+        data = get_gql(graphql, instance: instance, variables: { username: user }, token: token, sensitive: true)
+        (data.dig(:data, :user, :starredProjects, :nodes) || []).map { |n| n[:fullPath] }.sort
+      end
+
       def find_gql_repository(repo, instance: nil, token: nil)
         graphql = <<~GQL
           query repoInformation($fullPath: ID!) {
@@ -113,20 +152,30 @@ module MatrixReleasetracker
       end
 
       # Low-level communication
-      def get_gql(graphql, variables: {}, instance: nil, token: nil)
+      def get_gql(graphql, variables: {}, instance: nil, token: nil, sensitive: false)
+        instance ||= 'gitlab.com'
+
         headers = { 'content-type' => 'application/json' }
+        token ||= config.dig(:instances, instance, :token)
         headers['authorization'] = "Bearer #{token}" if token
 
+        raise Error, 'Need a token in order to do user/starred queries for GitLab' if sensitive && token.nil?
+
+        logger.debug "< #{graphql.inspect}"
         res = with_client(instance) do |http, path|
           http.post path, { query: graphql, variables: variables }.to_json, headers
         end
 
         if res.is_a? Net::HTTPOK
-          JSON.parse(res.body, symbolize_names: true)
+          logger.debug "> #{res.body.inspect}"
+          data = JSON.parse(res.body, symbolize_names: true)
+          raise GQLError, data[:errors].map { |err| "#{err[:path].join('.')}: #{err[:message]}" }.join("\n") if data.key? :errors
+
+          data
         else
           headers = res.to_hash.map { |k, v| "#{k}: #{v.join(', ')}" }.join("\n")
           logger.error "#{res.inspect}\n#{headers}\n#{res.body}"
-          raise res.body
+          raise Error, res.body
         end
       end
 
@@ -143,8 +192,6 @@ module MatrixReleasetracker
       end
 
       def client(instance)
-        instance ||= 'gitlab.com'
-
         @clients ||= {}
         @clients[instance] ||= begin
           uri = if instance.end_with? '/api/graphql'

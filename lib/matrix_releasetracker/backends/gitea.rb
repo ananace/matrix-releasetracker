@@ -5,6 +5,8 @@ require 'net/http'
 module MatrixReleasetracker
   module Backends
     class Gitea < MatrixReleasetracker::Backend
+      class Error < MatrixReleasetracker::Backend::Error; end
+
       def name
         'Gitea'
       end
@@ -54,7 +56,7 @@ module MatrixReleasetracker
         unless res.is_a? Net::HTTPOK
           headers = res.to_hash.map { |k, v| "#{k}: #{v.join(', ')}" }.join("\n")
           logger.error "#{res.inspect}\n#{headers}\n#{res.body}"
-          raise res.body
+          raise Error, res.body
         end
 
         data = JSON.parse(res.body, symbolize_names: true)
@@ -75,7 +77,7 @@ module MatrixReleasetracker
         unless res.is_a? Net::HTTPOK
           headers = res.to_hash.map { |k, v| "#{k}: #{v.join(', ')}" }.join("\n")
           logger.error "#{res.inspect}\n#{headers}\n#{res.body}"
-          raise res.body
+          raise Error, res.body
         end
 
         data = JSON.parse(res.body, symbolize_names: true)

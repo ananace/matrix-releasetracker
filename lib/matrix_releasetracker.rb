@@ -1,6 +1,11 @@
 # frozen_string_literal: true
 
 require 'matrix_releasetracker/version'
+
+module MatrixReleasetracker
+  class Error < StandardError; end
+end
+
 require 'matrix_releasetracker/backend'
 require 'matrix_releasetracker/client'
 require 'matrix_releasetracker/config'
@@ -15,8 +20,6 @@ module MatrixReleasetracker
     autoload :Github, 'matrix_releasetracker/backends/github'
     autoload :Gitlab, 'matrix_releasetracker/backends/gitlab'
   end
-
-  class Error < StandardError; end
 
   def self.logger
     @logger ||= Logging.logger[MatrixReleasetracker].tap do |log|

@@ -7,8 +7,8 @@ require 'tmpdir'
 module MatrixReleasetracker
   module Backends
     class Git < MatrixReleasetracker::Backend
-      class GitError < MatrixReleasetracker::Error; end
-      class ParseError < MatrixReleasetracker::Error; end
+      class GitError < MatrixReleasetracker::Backend::Error; end
+      class ParseError < MatrixReleasetracker::Backend::Error; end
 
       def name
         'Git'

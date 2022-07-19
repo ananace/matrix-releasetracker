@@ -12,6 +12,11 @@
   #:password: GitHub Password
 
 - :type: :gitlab
+  :instances:
+    'gitlab.com':
+      :token: 'Personal Access Token for gitlab.com'
+    'gitlab.example.com'
+      :token: 'Personal Access Token for gitlab.example.com'
 
 - :type: :gitea
 

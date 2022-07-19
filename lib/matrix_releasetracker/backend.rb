@@ -4,6 +4,8 @@ require 'pp'
 
 module MatrixReleasetracker
   class Backend
+    class Error < MatrixReleasetracker::Error; end
+
     include PP::ObjectMixin
 
     def initialize(config)
