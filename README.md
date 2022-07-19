@@ -71,6 +71,8 @@ Example config:
   #:connection_string: sqlite://database.db
 ```
 
+A more fully featured configuration example can be seen in [releasetracker.yml.example](releasetracker.yml.example)
+
 Example systemd unit:
 
 ```ini

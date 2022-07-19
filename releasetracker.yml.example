@@ -12,6 +12,7 @@
   #:password: GitHub Password
 
 - :type: :gitlab
+  # For tracking non-public data or users (stars)
   :instances:
     'gitlab.com':
       :token: 'Personal Access Token for gitlab.com'
@@ -19,6 +20,10 @@
       :token: 'Personal Access Token for gitlab.example.com'
 
 - :type: :gitea
+  # For tracking non-public data or users (stars)
+  :instances:
+    'gitea.example.com':
+      :token: 'Personal Access Token for gitea.example.com'
 
 - :type: :git
 
