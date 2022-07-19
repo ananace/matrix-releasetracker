@@ -234,6 +234,8 @@ module MatrixReleasetracker
       else
         data.delete :type
       end
+
+      logger.info "Successfully updated tracking information for room #{room_id}"
     rescue StandardError => e
       client.ensure_room(room_id).send_notice("#{e.class} occured when applying new state; #{e}")
 
