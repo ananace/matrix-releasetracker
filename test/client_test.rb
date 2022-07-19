@@ -28,7 +28,9 @@ class ClientTest < Minitest::Test
 
       'git+https://git.example.com/full/path/to/repo' => { backend: :git, type: :repository, object: 'git+https://git.example.com/full/path/to/repo' },
       'git+ssh://git@git.example.com/full/path/to/repo' => { backend: :git, type: :repository, object: 'git+ssh://git@git.example.com/full/path/to/repo' },
-      'git://git.example.com/full/path/to/repo' => { backend: :git, type: :repository, object: 'git://git.example.com/full/path/to/repo' }
+      'git://git.example.com/full/path/to/repo' => { backend: :git, type: :repository, object: 'git://git.example.com/full/path/to/repo' },
+
+      { uri: 'gitlab:token@u/user', data: { instance: 'git.example.com' } } => { backend: :gitlab, type: :user, object: 'user', data: { token: 'token', instance: 'git.example.com' } }
     }
 
     tests.each do |uri, result|

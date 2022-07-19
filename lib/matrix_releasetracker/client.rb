@@ -292,7 +292,14 @@ module MatrixReleasetracker
     private
 
     def parse_tracking_object(object)
-      return object, [] unless object.is_a? String
+      if object.is_a? Hash
+        return object, [] unless object.key? :uri
+
+        data, err = parse_tracking_object(object.delete(:uri))
+        data[:data].merge!(object.delete(:data)) if object.key? :data
+
+        return data.merge(object), err
+      end
 
       type_map = { 'g' => :group, 'r' => :repository, 'u' => :user }
 
