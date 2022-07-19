@@ -27,15 +27,26 @@ Example state event for advanced tracking;
 
       // GitLab(.com) repository;
       "gitlab:r/mb-saces/synatainer",
+      // GitLab(.com) group;
+      "gitlab:g/mb-saces",
+      // GitLab(.com) user stars; (with a token for if the tracker doesn't have one configured)
+      "gitlab:access_token@u/mb-saces",
+
       // GitLab (self-hosted) repository;
       "gitlab://dev.funkwhale.audio/r/funkwhale/funkwhale",
+      // GitLab (self-hosted) user stars; (with a token for if the tracker doesn't have one configured)
+      "gitlab://access_token@git.example.com/u/user",
+      "gitlab://<user>:access_token@git.example.com/u/user",
 
       // Gitea repository;
-      "gitea://git.lecygnenoir.info/r/LecygneNoir/peertube-helm",
+      "gitea://git.example.com/r/user/repository",
+      // Gitea user stars; (with a token for if the tracker doesn't have one configured)
+      "gitea://token@git.example.com/u/user",
 
       // Bare git repo;
+      "git+https://user:password@git.example.com/private/repo",
       "git+https://git.zx2c4.com/wireguard-tools",
-      "git+ssh://git.zx2c4.com/wireguard-tools",
+      "git+ssh://git@git.zx2c4.com/wireguard-tools",
       "git://git.zx2c4.com/wireguard-tools"
     ]
   },
