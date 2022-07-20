@@ -204,7 +204,7 @@ module MatrixReleasetracker
 
         backend = config.backends[object[:backend].to_sym]
         if backend
-          errors << "#{object} does not seem to be a valid git repo" if backend.is_a?(MatrixReleasetracker::Backends::Git) && !backend.valid?(object)
+          errors << "#{object} does not seem to be a valid git repo" if backend.is_a?(MatrixReleasetracker::Backends::Git) && !backend.valid?(object[:object])
 
           object.delete :backend
           Structs::Tracking.new_from_state(

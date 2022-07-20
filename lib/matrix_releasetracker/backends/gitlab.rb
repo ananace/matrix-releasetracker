@@ -15,7 +15,7 @@ module MatrixReleasetracker
       #
       # Inheritance implementation
       #
-      def find_group_information(group_name, token: nil, **params)
+      def find_group_repositories(group_name, token: nil, **params)
         instance, group_name = group_name.split(':')
         group_name, instance = instance, group_name if group_name.nil?
         instance ||= params[:instance] if params.key? :instance
@@ -31,7 +31,7 @@ module MatrixReleasetracker
         find_gql_repository(repo_name, instance: instance, token: token)
       end
 
-      def find_user_information(user_name, token: nil, **params)
+      def find_user_repositories(user_name, token: nil, **params)
         instance, user_name = user_name.split(':')
         user_name, instance = instance, user_name if user_name.nil?
         instance ||= params[:instance] if params.key? :instance
@@ -177,8 +177,8 @@ module MatrixReleasetracker
 
           data
         else
-          logger.error "#{res.inspect}\n#{res.body}"
-          raise Error, res.body
+          logger.error "#{res.inspect}\n#{res.body.strip}"
+          raise Error, res.body.strip
         end
       end
 

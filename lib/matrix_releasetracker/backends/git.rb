@@ -16,13 +16,14 @@ module MatrixReleasetracker
 
       def valid?(repo_url)
         uri = URI(repo_url)
-        return false unless u.scheme =~ /^git(\+(https?|ssh))?$/
+        return false unless uri.scheme =~ /^git(\+(https?|ssh))?$/
 
         uri.scheme = uri.scheme.sub('git+', '')
 
-        run_git(*%w[git ls-remote --tags], uri.to_s)
+        run_git(*%w[git ls-remote], uri.to_s)
         true
-      rescue GitError
+      rescue GitError => e
+        logger.debug "Failed to validate #{repo_url}, #{e}"
         false
       end
 
@@ -46,7 +47,8 @@ module MatrixReleasetracker
         }
       end
 
-      def find_repo_releases(repo_url, limit: 1, strict_semver: false, allowed: %i[tag lightweight_tag], **_)
+      def find_repo_releases(repo, limit: 1, strict_semver: false, allowed: %i[tag lightweight_tag], **_)
+        repo_url = repo[:slug]
         uri = URI(repo_url)
         uri.scheme = uri.scheme.sub('git+', '')
 

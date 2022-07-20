@@ -142,6 +142,9 @@ module MatrixReleasetracker
             end
 
       { releases: rel.compact }
+    rescue NotImplementedError
+      logger.error "Tried to read tracking information for #{tracked.type}, which is not implemented, ignoring."
+      { releases: [] }
     end
 
     def pretty_print_instance_variables
