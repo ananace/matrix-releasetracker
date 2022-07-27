@@ -74,6 +74,7 @@ Example config:
   :type: github
 - :type: gitlab
 - :type: gitea
+- :type: git
 :client:
   :hs_url: https://matrix.org
   :access_token: <token>
