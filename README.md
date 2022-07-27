@@ -8,12 +8,12 @@ For more information, questions, or just the use of the hosted version, you can 
 The tracked repositories can be configured in multiple ways.
 
 ### Bot-command
-Open a conversation with the bot and type `!github <username>`.
+Send the message `!github <username>` to the bot.
 This would track all repositories starred by the defined user.
 
 ### State event
 A more fine-grained approach is to save the tracked entities in the room state of a room you share with the bot.
-Send a state event (e.g. via Element with `\devtools`) containing all the things you want to track. These can be easily updated with another state event.
+Send a state event (e.g. via Element with `/devtools`) containing all the things you want to track. These can be easily updated with another state event.
 
 Example state event for advanced tracking;
 
