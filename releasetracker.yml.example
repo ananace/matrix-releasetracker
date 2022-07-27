@@ -39,4 +39,5 @@
 :database: {}
   # You can also specify the connection string
   #:connection_string: sqlite://database.db
+  #:connection_string: postgres://user:password@postgres.example.com/releasetracker
   #:debug: false

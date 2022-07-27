@@ -69,8 +69,8 @@ Example config:
 ---
 :backends:
 - :access_token: 0000000000000000000000000000000000000000 # GitHub access token - needs the public_repo scope
-  # also acceptable are a :login, :password combination - or :client_id, :client_secret for OAuth without GraphQL support
-  # It's also possible to skip the authentication entirely, to run with heavily reduced limits
+  # also acceptable are a :login, :password combination - or :client_id, :client_secret for OAuth - without GraphQL support
+  # It's also possible to skip the authentication entirely, to run with heavily reduced limits and only REST API functionality
   :type: github
 - :type: gitlab
 - :type: gitea
@@ -79,8 +79,8 @@ Example config:
   :hs_url: https://matrix.org
   :access_token: <token>
 :database:
-  # Will default to a database.db in the working-directory if missing
-  #:connection_string: sqlite://database.db
+  # Will default to sqlite stored in database.db in the working-directory
+  :connection_string: sqlite://database.db
 ```
 
 A more fully featured configuration example can be seen in [releasetracker.yml.example](releasetracker.yml.example)
