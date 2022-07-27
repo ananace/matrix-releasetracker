@@ -1,0 +1,7 @@
+version: "3.7"
+services:
+  matrix-release-tracker:
+    restart: "unless-stopped"
+    image: "ananace/matrix-releasetracker:latest"
+    volumes:
+      - "./releasetracker.yml:/app/releasetracker.yml"
