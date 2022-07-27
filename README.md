@@ -5,6 +5,15 @@ For more information, questions, or just the use of the hosted version, you can 
 ![Example image](https://i.imgur.com/iAP1rMs.png)
 
 ## Usage
+The tracked repositories can be configured in multiple ways.
+
+### Bot-command
+Send the message `!github <username>` to the bot.
+This would track all repositories starred by the defined user.
+
+### State event
+A more fine-grained approach is to save the tracked entities in the room state of a room you share with the bot.
+Send a state event (e.g. via Element with `/devtools`) containing all the things you want to track. These can be easily updated with another state event.
 
 Example state event for advanced tracking;
 
@@ -57,13 +66,11 @@ Example state event for advanced tracking;
 }
 ```
 
-### Running
+### Installation
 
 The `bin/tracker` binary will track and post updates on new GitHub releases, it requires a `releasetracker.yml` configuration file that it can read and write to.
 
-Once installed and started, all that's necessary to - currently - run the bot is to open a conversation with it and type `!github <username>`
-
-Example config:
+Example `releasetracker.yml` config-file:
 
 ```yaml
 ---
@@ -84,6 +91,7 @@ Example config:
 
 A more fully featured configuration example can be seen in [releasetracker.yml.example](releasetracker.yml.example)
 
+#### Systemd
 Example systemd unit:
 
 ```ini
@@ -99,6 +107,19 @@ Restart=on-failure
 
 [Install]
 WantedBy=default.target
+```
+
+#### Docker-compose
+You can use the image from [Dockerhub](https://hub.docker.com/r/ananace/matrix-releasetracker).
+Example `docker-compose.yml`
+```yaml
+version: "3.7"
+services:
+  matrix-release-tracker:
+    restart: "unless-stopped"
+    image: "ananace/matrix-releasetracker:latest"
+    volumes:
+      - "./releasetracker.yml:/app/releasetracker.yml"
 ```
 
 ## TODO
