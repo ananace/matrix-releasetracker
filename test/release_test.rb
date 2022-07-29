@@ -38,11 +38,18 @@ class ReleaseTest < Minitest::Test
   end
 
   def test_hash
-    assert_equal 'fcbb64a0612e69679e98fc4aa61e4ea6b05267471738be7a4ca6b245f0fbebca', @release.stable_hash
+    first = @release.stable_hash
+    assert_equal first, @release.stable_hash
 
     @release.version = '1.0.1'
 
-    assert_equal 'f953935536173a9765c758cda8c941ac9d8f9c673cb264c751d41bed5dcf1e92', @release.stable_hash
+    second = @release.stable_hash
+    assert second != first
+    assert_equal second, @release.stable_hash
+
+    @release.version = '1.0.0'
+
+    assert_equal first, @release.stable_hash
   end
 
   def test_render
