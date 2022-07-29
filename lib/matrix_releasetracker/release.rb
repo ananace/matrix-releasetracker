@@ -19,6 +19,7 @@ module MatrixReleasetracker
 
       @max_lines = 10
       @max_chars = 512
+      @version_name = nil
 
       args.each do |k, v|
         send "#{k}=".to_sym, v if respond_to? "#{k}=".to_sym
