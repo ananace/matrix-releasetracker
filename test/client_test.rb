@@ -52,4 +52,13 @@ class ClientTest < Minitest::Test
       assert err.any?
     end
   end
+
+  def test_set_state
+    data = {
+      type: 'm.notice',
+      tracking: []
+    }
+
+    @client.send :set_room_data, '!room:example.com', data
+  end
 end
