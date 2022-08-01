@@ -219,6 +219,8 @@ class Releasetracker
 
       track.remove_track
     end
+  rescue StandardError => e
+    logger.error "#{e.class} occured during room ensurance; #{e}"
   end
 
   def matrix_thread
