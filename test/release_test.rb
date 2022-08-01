@@ -10,7 +10,7 @@ class ReleaseTest < Minitest::Test
       version: '1.0.0',
       commit_sha: '1234567890abcdefghijklmnopqrstuvwxyz',
       publish_date: Time.new(2049, 10, 3, 21, 0, 0),
-      release_notes: 'Lorem ipsum dolor sit amet',
+      release_notes: "## H2\n\nLorem ipsum dolor sit amet",
       repo_url: 'http://example.com',
       release_url: 'http://example.com/release',
       avatar_url: 'https://upload.wikimedia.org/wikipedia/commons/b/b6/3_Bananas.jpg̈́',
@@ -56,6 +56,8 @@ class ReleaseTest < Minitest::Test
     assert_equal 'ananace / matrix-releasetracker 1.0.0', @release.to_s(:simple)
     assert_equal <<~MD, @release.to_s(:plain)
       ananace / matrix-releasetracker released 1.0.0 on Sun, Oct  3 2049 (http://example.com/release)
+      ## H2
+
       Lorem ipsum dolor sit amet
     MD
     assert_equal 'ananace / matrix-releasetracker released 1.0.0 on Sun, Oct  3 2049 (http://example.com/release)', @release.to_s(:plain, max_lines: 0)
@@ -64,6 +66,9 @@ class ReleaseTest < Minitest::Test
       [1.0.0 released at Sun, Oct  3 2049](http://example.com/release)
 
       ---
+
+      ## H2
+
       Lorem ipsum dolor sit amet
     MD
     assert_equal <<~MD, @release.to_s(:markdown, max_lines: 0)
@@ -75,6 +80,9 @@ class ReleaseTest < Minitest::Test
       <p><a href=\"http://example.com/release\">1.0.0 released at Sun, Oct  3 2049</a></p>
 
       <hr />
+
+      <h2>H2</h2>
+
       <p>Lorem ipsum dolor sit amet</p>
     HTML
     assert_equal <<~HTML, @release.to_s(:html, max_lines: 0)
