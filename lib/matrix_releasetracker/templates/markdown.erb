@@ -11,7 +11,7 @@
                    'released'
                  end
 -%>
-#### [<%= avatar_str %> <%= full_name %>](<%= repo_url %>)
+#### <%= avatar_str %> [<%= full_name %>](<%= repo_url %>)
 [<%= version_name %> <%= publish_type %> at <%= publish_date_str %>](<%= release_url %>)
 <%- unless trimmed_release_notes.nil? || trimmed_release_notes.empty? %>
 ---
