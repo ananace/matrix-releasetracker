@@ -62,7 +62,7 @@ class ReleaseTest < Minitest::Test
     MD
     assert_equal 'ananace / matrix-releasetracker released 1.0.0 on Sun, Oct  3 2049 (http://example.com/release)', @release.to_s(:plain, max_lines: 0)
     assert_equal <<~MD, @release.to_s(:markdown)
-      #### [![avatar](https://upload.wikimedia.org/wikipedia/commons/b/b6/3_Bananas.jpg̈́) ananace / matrix-releasetracker](http://example.com)
+      #### ![avatar](https://upload.wikimedia.org/wikipedia/commons/b/b6/3_Bananas.jpg̈́) [ananace / matrix-releasetracker](http://example.com)
       [1.0.0 released at Sun, Oct  3 2049](http://example.com/release)
 
       ---
@@ -72,11 +72,11 @@ class ReleaseTest < Minitest::Test
       Lorem ipsum dolor sit amet
     MD
     assert_equal <<~MD, @release.to_s(:markdown, max_lines: 0)
-      #### [![avatar](https://upload.wikimedia.org/wikipedia/commons/b/b6/3_Bananas.jpg̈́) ananace / matrix-releasetracker](http://example.com)
+      #### ![avatar](https://upload.wikimedia.org/wikipedia/commons/b/b6/3_Bananas.jpg̈́) [ananace / matrix-releasetracker](http://example.com)
       [1.0.0 released at Sun, Oct  3 2049](http://example.com/release)
     MD
     assert_equal <<~HTML, @release.to_s(:html)
-      <h4><a href=\"http://example.com\"><img src=\"https://upload.wikimedia.org/wikipedia/commons/b/b6/3_Bananas.jpg̈́\" alt=\"avatar\" height=\"32\" width=\"32\" /> ananace / matrix-releasetracker</a></h4>
+      <h4><img src=\"https://upload.wikimedia.org/wikipedia/commons/b/b6/3_Bananas.jpg̈́\" alt=\"avatar\" height=\"32\" width=\"32\" /> <a href=\"http://example.com\">ananace / matrix-releasetracker</a></h4>
       <p><a href=\"http://example.com/release\">1.0.0 released at Sun, Oct  3 2049</a></p>
 
       <hr />
@@ -86,7 +86,7 @@ class ReleaseTest < Minitest::Test
       <p>Lorem ipsum dolor sit amet</p>
     HTML
     assert_equal <<~HTML, @release.to_s(:html, max_lines: 0)
-      <h4><a href=\"http://example.com\"><img src=\"https://upload.wikimedia.org/wikipedia/commons/b/b6/3_Bananas.jpg̈́\" alt=\"avatar\" height=\"32\" width=\"32\" /> ananace / matrix-releasetracker</a></h4>
+      <h4><img src=\"https://upload.wikimedia.org/wikipedia/commons/b/b6/3_Bananas.jpg̈́\" alt=\"avatar\" height=\"32\" width=\"32\" /> <a href=\"http://example.com\">ananace / matrix-releasetracker</a></h4>
       <p><a href=\"http://example.com/release\">1.0.0 released at Sun, Oct  3 2049</a></p>
     HTML
   end
