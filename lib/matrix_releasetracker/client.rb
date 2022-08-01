@@ -90,6 +90,34 @@ module MatrixReleasetracker
       Logging.logger[self]
     end
 
+    def post_release(obj, rel, msgtype: 'm.notice')
+      api.send_message_event(
+        obj.room_id,
+        'm.room.message',
+        {
+          msgtype: msgtype,
+          body: rel.to_s(:markdown),
+          formatted_body: rel.to_s(:html),
+          format: 'org.matrix.custom.html',
+
+          'org.matrix.msc1767.message': [
+            {
+              mimetype: 'text/plain',
+              body: rel.to_s(:plain, max_lines: 0)
+            },
+            {
+              mimetype: 'text/markdown',
+              body: rel.to_s(:markdown, max_lines: rel.max_lines / 2)
+            },
+            {
+              mimetype: 'text/html',
+              body: rel.to_s(:html)
+            }
+          ]
+        }
+      )
+    end
+
     def next_batch
       data[:next_batch]
     end

@@ -138,31 +138,7 @@ class Releasetracker
           msgtype ||= 'm.notice'
 
           rel.avatar_url = fix_media_url(rel.avatar_url) if rel.avatar_url
-          api.send_message_event(
-            obj.room_id,
-            'm.room.message',
-            {
-              msgtype: msgtype,
-              body: rel.to_s(:markdown),
-              formatted_body: rel.to_s(:html),
-              format: 'org.matrix.custom.html',
-
-              "org.matrix.msc1767.message": [
-                {
-                  mimetype: 'text/plain',
-                  body: rel.to_s(:plain, max_lines: 0)
-                },
-                {
-                  mimetype: 'text/markdown',
-                  body: rel.to_s(:markdown, max_lines: rel.max_lines / 2)
-                },
-                {
-                  mimetype: 'text/html',
-                  body: rel.to_s(:html)
-                },
-              ]
-            }
-          )
+          client.post_release(obj, rel, msgtype: msgtype)
         end
 
         val = {
