@@ -200,10 +200,10 @@ class Releasetracker
         in_room = true
       rescue MatrixSdk::MatrixNotFoundError => e
         # Not in room
-        logger.info "Received #{ex.class}: #{e}"
+        logger.info "Received #{e.class}: #{e}"
       rescue MatrixSdk::MatrixForbiddenError => e
         # Not logged in?
-        logger.warn "Received #{ex.class}: #{e} - access token no longer valid?"
+        logger.warn "Received #{e.class}: #{e} - access token no longer valid?"
       end
 
       if in_room
