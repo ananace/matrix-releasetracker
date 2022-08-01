@@ -96,7 +96,7 @@ module MatrixReleasetracker
         'm.room.message',
         {
           msgtype: msgtype,
-          body: rel.to_s(:markdown),
+          body: rel.to_s(:plain, max_lines: 0),
           formatted_body: rel.to_s(:html),
           format: 'org.matrix.custom.html',
 
