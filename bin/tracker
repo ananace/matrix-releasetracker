@@ -145,7 +145,18 @@ class Releasetracker
               msgtype: msgtype,
               body: rel.to_s(:markdown),
               formatted_body: rel.to_s(:html),
-              format: 'org.matrix.custom.html'
+              format: 'org.matrix.custom.html',
+
+              "org.matrix.msc1767.message": [
+                {
+                  mimetype: 'text/plain',
+                  body: rel.to_s(:markdown)
+                },
+                {
+                  mimetype: 'text/html',
+                  body: rel.to_s(:html)
+                },
+              ]
             }
           )
         end
