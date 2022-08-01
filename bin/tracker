@@ -217,7 +217,7 @@ class Releasetracker
         logger.info "Not in room #{room}, removing."
       end
 
-      tracking.remove_track
+      track.remove_track
     end
   end
 
