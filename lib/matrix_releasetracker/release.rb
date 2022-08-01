@@ -75,7 +75,7 @@ module MatrixReleasetracker
           syntax_highlighter: nil,
           math_engine: nil
         )
-        "#{doc.to_html_extended}"
+        doc.to_html_extended
       end
     end
 
