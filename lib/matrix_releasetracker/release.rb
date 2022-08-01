@@ -51,7 +51,14 @@ module MatrixReleasetracker
       end
     end
 
-    def to_s(format = :simple)
+    def to_s(format = :simple, max_chars: nil, max_lines: nil)
+      if max_chars || max_lines
+        return dup.tap do |copy|
+          copy.max_chars = max_chars if max_chars
+          copy.max_lines = max_lines if max_lines
+        end.to_s(format)
+      end
+
       format = :markdown unless %i[simple plain markdown html].include? format
       case format
       when :simple
@@ -68,7 +75,7 @@ module MatrixReleasetracker
           syntax_highlighter: nil,
           math_engine: nil
         )
-        "#{doc.to_html_extended}<br/>"
+        "#{doc.to_html_extended}"
       end
     end
 
@@ -94,12 +101,17 @@ module MatrixReleasetracker
 
     private
 
-    def render(template)
+    def render(template, max_chars: nil, max_lines: nil)
+      max_chars ||= self.max_chars
+      max_lines ||= self.max_lines
+
       erb = ERB.new template, trim_mode: '-'
       erb.result(binding)
     end
 
-    def release_note_overflow
+    def release_note_overflow(max_lines: nil)
+      max_lines ||= self.max_lines
+
       return nil if max_lines.negative?
 
       "   \n ..." if (release_notes || '').count("\n") > max_lines
@@ -109,8 +121,12 @@ module MatrixReleasetracker
       publish_date&.strftime('%a, %b %e %Y')
     end
 
-    def trimmed_release_notes
+    def trimmed_release_notes(max_chars: nil, max_lines: nil)
+      max_chars ||= self.max_chars
+      max_lines ||= self.max_lines
+
       return release_notes if max_lines.negative? && max_chars.negative?
+      return '' if max_lines.zero? || max_chars.zero?
 
       m_c = max_chars >= 0 ? max_chars : 40_000
       m_l = max_lines >= 0 ? max_lines : 1_000
