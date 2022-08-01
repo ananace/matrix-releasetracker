@@ -138,7 +138,7 @@ class Releasetracker
           msgtype ||= 'm.notice'
 
           rel.avatar_url = fix_media_url(rel.avatar_url) if rel.avatar_url
-          client.post_release(obj, rel, msgtype: msgtype)
+          config.client.post_release(obj, rel, msgtype: msgtype)
         end
 
         val = {
