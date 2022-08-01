@@ -150,6 +150,10 @@ class Releasetracker
               "org.matrix.msc1767.message": [
                 {
                   mimetype: 'text/plain',
+                  body: rel.to_s(:plain)
+                },
+                {
+                  mimetype: 'text/markdown',
                   body: rel.to_s(:markdown)
                 },
                 {
