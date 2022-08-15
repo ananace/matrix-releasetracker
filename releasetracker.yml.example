@@ -31,6 +31,9 @@
   :hs_url: https://matrix.example.com
   :access_token: Bot account access_token
 
+  # Defaults to true, handles the legacy '!github USER' command
+  #:legacy_commands: false
+
   # Any other MatrixSdk parameters can also be set;
   #:device_id: Some descriptive device id
   #:read_timeout: 600

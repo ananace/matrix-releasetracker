@@ -158,16 +158,19 @@ module MatrixReleasetracker
     # Tracking a users stars
     class User < Tracking
       def type; :user end
+      def type_short; :u end
     end
 
     # Tracking all repositories in a group/namespace
     class Group < Tracking
       def type; :group end
+      def type_short; :g end
     end
 
     # Tracking a loose repository
     class Repository < Tracking
       def type; :repository end
+      def type_short; :r end
     end
 
     RateLimit = Struct.new('RateLimit', :backend, :name, :requests, :remaining, :resets_at, :resets_in) do

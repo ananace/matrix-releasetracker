@@ -10,17 +10,18 @@ module MatrixReleasetracker
       config
     end
 
-    attr_accessor :filename
-    attr_reader :backends, :client, :media, :database
+    attr_accessor :client, :filename
+    attr_reader :backends, :media, :database
 
     def load!
       raise 'Config file is missing' unless File.exist? filename
 
       data = Psych.load File.read(filename)
 
-      @client = [data.fetch(:client, {})].map do |config|
-        MatrixReleasetracker::Client.new config: self, **config
-      end.first
+      [data.fetch(:client, {})].map do |config|
+        config[:homeserver] = config.delete :hs_url if config.key? :hs_url
+        MatrixReleasetracker::Client.set config: self, **config
+      end
 
       db_config = {
         connection_string: 'sqlite://database.db',
@@ -43,8 +44,6 @@ module MatrixReleasetracker
       end
 
       @media = @database[:media]
-
-      @client.reload!
 
       true
     end

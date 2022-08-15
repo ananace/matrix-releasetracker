@@ -38,18 +38,23 @@ class Releasetracker
     @logger.level = options[:debug] ? :debug : :info
 
     logger.info 'Loaded configuration.'
-
-    @client = config.client.client
-    @api = config.client.api
   end
 
   def run!
+    sync_thread = Thread.new { matrix_thread }
+    loop do
+      break if config.client
+
+      sleep 0.25
+    end
+
+    @client = config.client.client
+    @api = config.client.api
+
     ensure_rooms
 
     logger.info "Starting tracker with #{config.backends.count} backends."
     @running = true
-
-    sync_thread = Thread.new { matrix_thread }
 
     while running
       update_backends
@@ -222,21 +227,8 @@ class Releasetracker
   end
 
   def matrix_thread
-    logger.info 'Starting Matrix sync loop...'
-    client.sync_filter = ROOM_STATE_FILTER
-    while running
-      begin
-        client.sync(timeout: 10.0, set_presence: :offline, since: config.client.next_batch)
-
-        config.client.next_batch = client.next_batch
-        config.save!
-
-        sleep 10
-      rescue StandardError => e
-        logger.error "#{e.class} in sync: #{e}. Retrying in 30s"
-        sleep 30
-      end
-    end
+    logger.info 'Starting Matrix bot...'
+    MatrixReleasetracker::Client.run! { |instance| config.client = instance }
   end
 
   def fix_media_url(url)
