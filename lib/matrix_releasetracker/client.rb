@@ -59,7 +59,7 @@ module MatrixReleasetracker
     command 'list', desc: 'List all currently tracked objects' do
       legacy = false
       begin
-        client.api.get_room_state(room.id, ROOM_STATE_KEY)
+        room.get_state(ROOM_STATE_KEY)
       rescue MatrixSdk::NotFoundError
         legacy = true
       end
@@ -94,7 +94,7 @@ module MatrixReleasetracker
 
       current = {}
       begin
-        current = client.api.get_room_state(room.id, ROOM_STATE_KEY)
+        current = room.room_state[ROOM_STATE_KEY]
       rescue MatrixSdk::NotFoundError
         # Acceptable
       end
@@ -102,7 +102,7 @@ module MatrixReleasetracker
       tracking = (current[:tracking] ||= [])
       tracking << uri
 
-      client.api.send_state_event(room.id, ROOM_STATE_KEY, current)
+      room.room_state[ROOM_STATE_KEY] = current
     end
 
     command :untrack, desc: 'Removes a tracking URI', only: -> { room.user_can_send?(client.mxid, ROOM_STATE_KEY, state: true) } do |uri|
@@ -110,7 +110,7 @@ module MatrixReleasetracker
 
       current = {}
       begin
-        current = client.api.get_room_state(room.id, ROOM_STATE_KEY)
+        current = room.room_state[ROOM_STATE_KEY]
       rescue MatrixSdk::NotFoundError
         return
       end
@@ -135,7 +135,7 @@ module MatrixReleasetracker
 
       return if tracking == before
 
-      client.api.send_state_event(room.id, ROOM_STATE_KEY, current)
+      room.room_state[ROOM_STATE_KEY] = current
     end
 
     event ROOM_STATE_KEY do

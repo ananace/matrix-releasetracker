@@ -25,7 +25,7 @@ Gem::Specification.new do |spec|
   # spec.add_dependency 'gitlab', '~> 4'
   spec.add_dependency 'kramdown'
   spec.add_dependency 'logging', '~> 2'
-  spec.add_dependency 'matrix_sdk', '~> 2'
+  spec.add_dependency 'matrix_sdk', '~> 2.8'
   spec.add_dependency 'octokit', '~> 5'
   spec.add_dependency 'sequel', '~> 5.58'
 
