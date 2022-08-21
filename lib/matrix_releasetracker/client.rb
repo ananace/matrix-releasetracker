@@ -10,17 +10,16 @@ require 'matrix_sdk/errors'
 
 module MatrixReleasetracker
   class Client < MatrixSdk::Bot::Base
-    ACCOUNT_DATA_KEY = 'com.github.ananace.RequestTracker.data'
     ROOM_STATE_KEY = 'dev.ananace.ReleaseTracker'
-    ACCOUNT_DATA_FILTER = {
+    SYNC_FILTER = {
       presence: { types: [] },
-      account_data: { limit: 1, types: [ACCOUNT_DATA_KEY] },
+      account_data: { types: [] },
       room: {
         rooms: [],
         ephemeral: { types: [] },
         state: { types: [ROOM_STATE_KEY] },
         timeline: { types: ['m.room.message'] },
-        account_data: { limit: 1, types: [ACCOUNT_DATA_KEY] }
+        account_data: { types: [] }
       }
     }.freeze
 
@@ -31,7 +30,7 @@ module MatrixReleasetracker
 
     enable :legacy_commands
 
-    set :sync_filter, ACCOUNT_DATA_FILTER
+    set :sync_filter, SYNC_FILTER
 
     command 'github', desc: '(Legacy) Track GitHub user stars', only: [:dm, -> { settings.legacy_commands? }, -> { config.backends.keys.include? :github }] do |user|
       raise ArgumentError, 'Needs to specify a user' unless user
