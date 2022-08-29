@@ -115,7 +115,7 @@ module MatrixReleasetracker
             }
           ]
         },
-        txn_id: rel.stable_hash
+        txn_id: Digest::SHA2.hexdigest("#{obj.room_id}#{rel.stable_hash}")
       )
     end
 
