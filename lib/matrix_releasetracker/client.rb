@@ -114,7 +114,8 @@ module MatrixReleasetracker
               body: rel.to_s(:html)
             }
           ]
-        }
+        },
+        txn_id: rel.stable_hash
       )
     end
 
