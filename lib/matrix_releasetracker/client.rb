@@ -393,6 +393,8 @@ module MatrixReleasetracker
         return reload_with_sync
       end
 
+      logger.error "#{e.class} occurred when reading account data: #{e}"
+
       raise e
     end
   end
