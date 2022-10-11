@@ -12,6 +12,7 @@ class ClientTest < Minitest::Test
       'github:u/user' => { backend: :github, type: :user, object: 'user' },
       'github:g/group' => { backend: :github, type: :group, object: 'group' },
       'github:r/group/repo' => { backend: :github, type: :repository, object: 'group/repo' },
+      'github:r/group/repo?allow=tag' => { backend: :github, type: :repository, object: 'group/repo', data: { allow: ['tag'] } },
       'gitlab:u/user' => { backend: :gitlab, type: :user, object: 'user' },
       'gitlab:g/group' => { backend: :gitlab, type: :group, object: 'group' },
       'gitlab:r/group/repo' => { backend: :gitlab, type: :repository, object: 'group/repo' },
@@ -25,6 +26,7 @@ class ClientTest < Minitest::Test
       'gitea://user:token@gitea.example.com/u/user' => { backend: :gitea, type: :user, object: 'gitea.example.com:user', data: { token: 'token' } },
       'gitea://gitea.example.com/g/group' => { backend: :gitea, type: :group, object: 'gitea.example.com:group' },
       'gitea://gitea.example.com/r/group/repo' => { backend: :gitea, type: :repository, object: 'gitea.example.com:group/repo' },
+      'gitea://user:token@gitea.example.com/r/group/repo?allow=tag&allow=release' => { backend: :gitea, type: :repository, object: 'gitea.example.com:group/repo', data: { token: 'token', allow: ['tag', 'release'] } },
 
       'git+https://git.example.com/full/path/to/repo' => { backend: :git, type: :repository, object: 'git+https://git.example.com/full/path/to/repo' },
       'git+ssh://git@git.example.com/full/path/to/repo' => { backend: :git, type: :repository, object: 'git+ssh://git@git.example.com/full/path/to/repo' },

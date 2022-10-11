@@ -72,11 +72,11 @@ module MatrixReleasetracker
       end
 
       def find_repo_releases(repo, allow: nil, **_)
-        allow ||= %i[lightweight_tag tag release]
+        allow ||= %w[lightweight_tag tag release]
 
         if gql_available?
-          find_gql_releases(repo[:slug]).select { |r| allow.include? r[:type] }
-        elsif allow.include? :release
+          find_gql_releases(repo[:slug]).select { |r| allow.include? r[:type].to_s }
+        elsif allow.include? 'release'
           find_rest_releases(repo[:slug])
         end
       rescue Octokit::NotFound

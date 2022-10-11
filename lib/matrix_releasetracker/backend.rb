@@ -283,6 +283,9 @@ module MatrixReleasetracker
 
       expiry = NIL_RELEASE_EXPIRY
       find_repo_releases(repo, **params).each do |latest|
+        logger.debug "For #{latest.inspect}"
+        next if latest.empty?
+
         expiry = TAGS_RELEASE_EXPIRY if expiry == NIL_RELEASE_EXPIRY
         expiry = RELEASE_EXPIRY if latest[:type] == :release && expiry != RELEASE_EXPIRY
 

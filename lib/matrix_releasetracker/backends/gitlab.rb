@@ -5,6 +5,7 @@ module MatrixReleasetracker
     class Gitlab < MatrixReleasetracker::Backend
       class Error < MatrixReleasetracker::Backend::Error; end
       class GQLError < Error; end
+      class RESTError < Error; end
 
       def name
         'GitLab'
@@ -39,12 +40,16 @@ module MatrixReleasetracker
         find_gql_user_repositories(user_name, instance: instance, token: token)
       end
 
-      def find_repo_releases(repo, limit: 1, token: nil, **params)
+      def find_repo_releases(repo, limit: 1, allow: nil, token: nil, **params)
         instance, repo_name = repo[:slug].split(':')
         repo_name, instance = instance, repo_name if repo_name.nil?
         instance ||= params[:instance] if params.key? :instance
+        allow ||= %w[release]
 
-        find_gql_releases(repo_name, limit: limit, instance: instance, token: token)
+        releases = []
+        releases += find_gql_releases(repo_name, limit: limit, instance: instance, token: token) if allow.include? 'release'
+        releases += get_rest_tags(repo_name, limit: limit, instance: instance, token: token, allow: allow) if allow.include?('tag') || allow.include?('lightweight_tag')
+        releases
       end
 
       private
@@ -155,6 +160,25 @@ module MatrixReleasetracker
         end
       end
 
+      def get_rest_tags(repo, limit: 1, allow: nil, instance: nil, token: nil)
+        allow ||= %w[tag lightweight_tag]
+
+        data = get_rest("/projects/#{CGI.escape(repo)}/repository/tags", instance: instance, token: token)
+        data.map do |node|
+          {
+            sha: node.dig(:commit, :id),
+            name: node[:name],
+            tag_name: node[:name],
+            published_at: Time.parse(node.dig(:commit, :created_at)),
+            html_url: node.dig(:commit, :web_url).gsub(%r{-/commit/.*}, "-/tags/#{node[:name]}"),
+            body: node[:message],
+            type: node[:message].nil? || node[:message].empty? ? :lightweight_tag : :tag
+          }
+        end
+            .select { |r| allow.include? r[:type].to_s }
+            .take(limit)
+      end
+
       # Low-level communication
       def get_gql(graphql, variables: {}, instance: nil, token: nil, sensitive: false)
         instance ||= 'gitlab.com'
@@ -182,25 +206,49 @@ module MatrixReleasetracker
         end
       end
 
-      def with_client(instance, &block)
+      def get_rest(path, instance: nil, token: nil)
+        instance ||= 'gitlab.com'
+
+        logger.debug "Executing REST GET #{path} on #{instance}"
+
+        headers = { 'content-type' => 'application/json' }
+        token ||= config.dig(:instances, instance, :token)
+        headers['authorization'] = "Bearer #{token}" if token
+
+        res = with_client(instance, api: :v4) do |http, basepath|
+          http.get File.join(basepath, path), headers
+        end
+
+        if res.is_a? Net::HTTPOK
+          JSON.parse(res.body, symbolize_names: true)
+        else
+          data = JSON.parse(res.body, symbolize_names: true) rescue {}
+          raise RESTError, data[:message] if data.key? :message
+
+          logger.error "#{res.inspect}\n#{res.body.strip}"
+          raise Error, res.body.strip
+        end
+      end
+
+      def with_client(instance, api: :graphql, &block)
         cl = client(instance)
 
         path = if instance&.start_with? 'https://'
                  URI(instance).path
                else
-                 '/api/graphql'
+                 "/api/#{api}"
                end
 
         block.call(cl, path)
       end
 
-      def client(instance)
+      def client(instance, api: :graphql)
         @clients ||= {}
         @clients[instance] ||= begin
-          uri = if instance.end_with? '/api/graphql'
+          uri = if instance.end_with? "/api/#{api}"
                   URI(instance)
                 else
-                  URI("https://#{instance}/api/graphql")
+                  URI("https://#{instance}/api/#{api}")
                 end
           connection = Net::HTTP.new(uri.host, uri.port)
           connection.use_ssl = uri.scheme == 'https'

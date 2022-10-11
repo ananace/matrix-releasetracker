@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'base64'
+require 'cgi'
 require 'json'
 require 'pp'
 require 'zlib'
@@ -159,6 +160,7 @@ module MatrixReleasetracker
     #     "github:u/user",
     #     "github:g/group",
     #     "github:r/group/repo",
+    #     "github:r/group/repo?allow=tag",
     #     "gitlab:u/user",
     #     "gitlab:g/group",
     #     "gitlab:r/group/repo",
@@ -241,7 +243,7 @@ module MatrixReleasetracker
             backend: backend,
             object: object[:object],
             type: object[:type],
-            extradata: def_config.merge(JSON.parse(object[:data] || '{}', symbolize_names: true))
+            extradata: def_config.merge(object[:data] || {})
           )
         else
           errors << "Unknown backend #{object[:backend].to_sym.inspect} for #{object}"
@@ -332,6 +334,7 @@ module MatrixReleasetracker
 
       type_map = { 'g' => :group, 'r' => :repository, 'u' => :user }
 
+      errors = []
       u = URI(object)
       data = if u.scheme =~ /^git(\+(https?|ssh))?$/
                {
@@ -345,6 +348,8 @@ module MatrixReleasetracker
                  token = u.password || u.user
                else
                  path = u.opaque || u.path
+                 path, query = path.split('?')
+
                  token, path = path.split('@')
                  path, token = token, path if path.nil?
                  path = path.split('/')
@@ -352,21 +357,28 @@ module MatrixReleasetracker
                end
                type = type_map[path.shift]
 
-               errors = ["#{object} is not of a known type (g/r/u)"] if type.nil?
+               errors << "#{object} is not of a known type (g/r/u)" if type.nil?
 
                path = path.join('/')
                path = "#{u.host}:#{path}" if u.host
 
-               auth = {
-                 token: token
-               }.compact
-               auth = nil if auth.empty?
+               data = {}
+               data[:token] = token if token
+               if query || u.query
+                 query_params = CGI.parse(query || u.query)
+                 data[:allow] = query_params['allow'] if query_params.key? 'allow'
+                 data[:allow].each do |allow|
+                   errors << "#{allow} is not a known type (lightweight_tag/tag/release)" unless %w[lightweight_tag tag release].include?(allow)
+                 end
+               end
+               data.compact!
+               data = nil if data.empty?
 
                {
                  backend: u.scheme.to_sym,
                  type: type,
                  object: path,
-                 data: auth
+                 data: data
                }.compact
              end
 
