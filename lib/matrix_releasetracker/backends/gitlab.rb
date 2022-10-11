@@ -222,11 +222,13 @@ module MatrixReleasetracker
         if res.is_a? Net::HTTPOK
           JSON.parse(res.body, symbolize_names: true)
         else
-          data = JSON.parse(res.body, symbolize_names: true) rescue {}
-          raise RESTError, data[:message] if data.key? :message
-
-          logger.error "#{res.inspect}\n#{res.body.strip}"
-          raise Error, res.body.strip
+          begin
+            data = JSON.parse(res.body, symbolize_names: true)
+            raise RESTError, data[:message] if data.key? :message
+          rescue StandardError
+            logger.error "#{res.inspect}\n#{res.body.strip}"
+            raise Error, res.body.strip
+          end
         end
       end
 
