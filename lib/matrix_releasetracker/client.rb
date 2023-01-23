@@ -3,6 +3,7 @@
 require 'base64'
 require 'cgi'
 require 'json'
+require 'pp'
 require 'zlib'
 require 'matrix_sdk'
 require 'matrix_sdk/errors'

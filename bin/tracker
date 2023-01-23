@@ -6,6 +6,7 @@ require 'logging'
 require 'optparse'
 require 'matrix_releasetracker'
 require 'net/http'
+require 'pp'
 require 'time'
 
 ROOM_STATE_FILTER = {
