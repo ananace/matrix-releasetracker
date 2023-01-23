@@ -133,7 +133,7 @@ services:
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/ananace/matrix_releasetracker
+Bug reports and pull requests are welcome on GitHub at https://github.com/ananace/matrix-releasetracker
 
 ## License
 
