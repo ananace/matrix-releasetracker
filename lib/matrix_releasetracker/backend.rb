@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require 'pp'
-
 module MatrixReleasetracker
   class Backend
     class Error < MatrixReleasetracker::Error; end
