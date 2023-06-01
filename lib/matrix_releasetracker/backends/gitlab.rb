@@ -147,7 +147,7 @@ module MatrixReleasetracker
 
         data = get_gql(graphql, instance: instance, variables: { fullPath: repo, limit: limit }, token: token)
 
-        data.dig(:data, :project, :releases, :nodes).map do |node|
+        data.dig(:data, :project, :releases, :nodes)&.map do |node|
           {
             sha: node.dig(:commit, :sha),
             name: node[:name],
@@ -157,7 +157,7 @@ module MatrixReleasetracker
             body: node[:description],
             type: node[:upcomingRelease] ? :prerelease : :release
           }
-        end
+        end || []
       end
 
       def get_rest_tags(repo, limit: 1, allow: nil, instance: nil, token: nil)
